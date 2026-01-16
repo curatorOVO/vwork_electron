@@ -1,8 +1,36 @@
+# 依赖
 node_modules
+
+# 构建输出
 dist
 dist-electron
-.DS_Store
+
+# 日志文件
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 编辑器配置
 .vscode
 .idea
+*.swp
+*.swo
+*~
+.DS_Store
 
+# 操作系统文件
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# 环境变量（如果有的话）
+.env
+.env.local
+.env.*.local
+
+# 临时文件
+*.tmp
+*.temp
+.cache
