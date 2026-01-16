@@ -1,0 +1,153 @@
+/**
+ * Express服务器 - 供Electron启动
+ * 接收企微消息并转发
+ * Node.js版本，替代Python FastAPI
+ */
+const express = require('express')
+const cors = require('cors')
+const axios = require('axios')
+const { readIni, sendCallback, validAuthDatetime, killProcessByPort } = require('./commons/common')
+
+const app = express()
+
+// 添加CORS支持
+app.use(cors({
+  origin: '*',
+  credentials: true,
+  methods: ['*'],
+  allowedHeaders: ['*']
+}))
+
+// 解析JSON请求体
+app.use(express.json())
+
+// 消息推送地址（由环境变量设置）
+const MESSAGE_SERVER_URL = process.env.MESSAGE_SERVER_URL || 'http://127.0.0.1:9999/message'
+
+/**
+ * 接收企微消息推送
+ */
+app.post('/msg', async (req, res) => {
+  try {
+    const data = req.body
+    let self_user_id = data.self_user_id || ''
+    if (self_user_id === '') {
+      self_user_id = data.user_id || ''
+    }
+
+    // 读取配置
+    const ini_config = readIni()
+    let target_item = null
+    for (const item of ini_config.login_info) {
+      if (item.user_id === self_user_id) {
+        target_item = item
+        break
+      }
+    }
+
+    const expire = target_item ? target_item.expire : ''
+    const valid_auth = validAuthDatetime(expire)
+
+    // 如果开启日志且授权有效，推送消息到Electron主进程
+    if (ini_config.open_log && valid_auth) {
+      try {
+        await axios.post(MESSAGE_SERVER_URL, data, {
+          timeout: 1000
+        })
+      } catch (error) {
+        console.error(`推送消息到Electron失败: ${error.message}`)
+      }
+    }
+
+    // 如果授权有效，发送回调
+    if (valid_auth) {
+      if (ini_config.callback && ini_config.callback.includes('http') && ini_config.callback.includes('://')) {
+        await sendCallback(ini_config.callback, data)
+      }
+    } else {
+      // 授权过期，推送错误消息
+      const error_data = {
+        content: '当前授权已到期，请重新购买授权',
+        sys: true
+      }
+      try {
+        await axios.post(MESSAGE_SERVER_URL, error_data, {
+          timeout: 1000
+        })
+      } catch (error) {
+        console.error(`推送错误消息失败: ${error.message}`)
+      }
+    }
+
+    res.json({ message: 'success' })
+  } catch (error) {
+    console.error(`处理消息错误: ${error.message}`)
+    res.json({ message: 'success' }) // 即使出错也返回success，避免企微重试
+  }
+})
+
+/**
+ * 暴露出去的API - 代理到企微端口
+ * 注意：这个端点实际上不应该被直接调用
+ * 应该直接调用企微的HTTP端口（如8989）的/api端点
+ * 这里保留是为了兼容性，但实际使用中应该直接调用企微端口
+ */
+app.post('/api', async (req, res) => {
+  try {
+    const data = req.body
+    const port = parseInt(req.query.port) || 8989
+    const url = `http://127.0.0.1:${port}/api`
+
+    const response = await axios.post(url, data, {
+      timeout: 10000
+    })
+    res.json(response.data)
+  } catch (error) {
+    res.json({
+      message: error.message,
+      success: false
+    })
+  }
+})
+
+/**
+ * 根路径
+ */
+app.get('/', (req, res) => {
+  res.json({ message: 'Express Server Running' })
+})
+
+/**
+ * 运行Express服务器
+ * @param {number} port - 端口号
+ * @returns {Promise<http.Server>} HTTP服务器实例
+ */
+async function runServer(port) {
+  // 先杀死占用端口的进程
+  try {
+    await killProcessByPort(port)
+  } catch (error) {
+    // 忽略错误
+  }
+
+  return new Promise((resolve, reject) => {
+    const server = app.listen(port, '127.0.0.1', () => {
+      console.log(`Express服务器启动在端口 ${port}`)
+      resolve(server)
+    })
+    
+    server.on('error', (error) => {
+      console.error(`Express服务器启动失败: ${error.message}`)
+      reject(error)
+    })
+  })
+}
+
+// 如果直接运行此文件
+if (require.main === module) {
+  const port = parseInt(process.argv[2]) || 8888
+  runServer(port)
+}
+
+module.exports = { app, runServer }
+
