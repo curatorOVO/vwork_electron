@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build && electron-builder",
+    "electron:build": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "electron:build:dir": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
@@ -45,14 +46,33 @@
     "directories": {
       "output": "dist-electron"
     },
+    "nsis": {
+      "oneClick": false,
+      "language": "2052",
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true
+    },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "conf",
+        "to": "conf",
+        "filter": ["**/*"]
+      }
+    ],
     "win": {
       "target": "nsis",
-      "icon": "src/assets/logo.jpg"
+      "sign": null,
+      "signingHashAlgorithms": []
     }
   }
 }

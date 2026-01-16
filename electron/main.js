@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
@@ -43,6 +43,19 @@ const axios = require('axios')
 let mainWindow
 let fastapiProcess = null
 let messageServer = null // 消息接收服务器
+
+// 获取应用资源路径（处理打包后的路径）
+const getAppPath = () => {
+  // 使用 app.isPackaged 判断是否是打包后的应用
+  if (app.isPackaged) {
+    // 打包后：process.resourcesPath 指向 resources 目录
+    // extraResources 中的 bin 和 conf 目录在 resources 目录中（与 app.asar 同级）
+    // 所以直接返回 resources 目录
+    return process.resourcesPath
+  }
+  // 开发环境：返回 electron 目录的父目录（项目根目录）
+  return path.join(__dirname, '..')
+}
 
 // 查找Python可执行文件
 const findPython = () => {
@@ -302,7 +315,7 @@ const killProcessByPort = (port) => {
 
 // 读取配置文件
 const readConfig = () => {
-  const configPath = path.join(__dirname, '../conf/conf.ini')
+  const configPath = path.join(getAppPath(), 'conf/conf.ini')
   try {
     const content = fs.readFileSync(configPath, 'utf-8')
     return ini.parse(content)
@@ -324,7 +337,7 @@ const readConfig = () => {
 
 // 保存配置文件
 const saveConfig = (config) => {
-  const configPath = path.join(__dirname, '../conf/conf.ini')
+  const configPath = path.join(getAppPath(), 'conf/conf.ini')
   try {
     const content = ini.stringify(config)
     fs.writeFileSync(configPath, content, 'utf-8')
@@ -344,7 +357,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      // 在打包后，preload 脚本在 app.asar 中，路径会自动处理
     },
     icon: path.join(__dirname, '../src/assets/logo.jpg'),
     title: '北极熊企微框架Pro v1.1'
@@ -352,7 +366,15 @@ function createWindow() {
 
   // 开发环境加载本地服务器，生产环境加载构建后的文件
   // 检查是否是开发模式（通过检查 dist 目录是否存在来判断）
-  const distPath = path.join(__dirname, '../dist/index.html')
+  let distPath
+  if (app.isPackaged) {
+    // 打包后：dist 目录内容在 app.asar 中，使用 app.getAppPath() 获取 asar 路径
+    // files 配置中的 dist/**/* 会保持目录结构，所以路径是 dist/index.html
+    distPath = path.join(app.getAppPath(), 'dist', 'index.html')
+  } else {
+    // 开发环境：dist 目录在项目根目录
+    distPath = path.join(__dirname, '../dist/index.html')
+  }
   const isDev = !fs.existsSync(distPath) || process.env.NODE_ENV === 'development'
   
   console.log('Environment:', process.env.NODE_ENV)
@@ -435,6 +457,67 @@ function createWindow() {
       messageServer.close()
     }
   })
+
+  // 根据环境设置菜单栏：开发环境显示，生产环境隐藏
+  if (isDev) {
+    // 开发环境：使用默认菜单或自定义菜单
+    const template = [
+      {
+        label: 'File',
+        submenu: [
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'close' }
+        ]
+      },
+      {
+        label: 'Help',
+        submenu: [
+          {
+            label: 'About',
+            click: () => {
+              // 可以添加关于对话框
+            }
+          }
+        ]
+      }
+    ]
+    const menu = Menu.buildFromTemplate(template)
+    Menu.setApplicationMenu(menu)
+  } else {
+    // 生产环境：隐藏菜单栏
+    Menu.setApplicationMenu(null)
+  }
 }
 
 app.whenReady().then(() => {
@@ -517,7 +600,7 @@ ipcMain.handle('find-available-port', async (event, startPort = 1024) => {
 
 // 执行注入工具（需要根据实际情况调整）
 ipcMain.handle('run-inject-tool', async (event, { port, serverPort, key }) => {
-  const injectToolPath = path.join(__dirname, '../bin/it.exe')
+  const injectToolPath = path.join(getAppPath(), 'bin/it.exe')
   return new Promise((resolve) => {
     const child = spawn(injectToolPath, [
       'start',
