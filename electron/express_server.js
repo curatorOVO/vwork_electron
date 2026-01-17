@@ -71,12 +71,10 @@ app.post('/msg', async (req, res) => {
       if (ini_config.callback && ini_config.callback.includes('http') && ini_config.callback.includes('://')) {
         const callbackResult = await sendCallback(ini_config.callback, data)
         
-        // 如果开启了日志，将回调发送状态推送到前端
-        if (ini_config.open_log) {
+        // 如果开启了日志且回调失败，将回调失败信息推送到前端
+        if (ini_config.open_log && !callbackResult.success) {
           const callbackLogData = {
-            content: callbackResult.success 
-              ? `回调发送成功: ${ini_config.callback} (耗时: ${callbackResult.duration}ms)`
-              : callbackResult.message, // message 已经包含了完整错误信息，不需要再加前缀
+            content: callbackResult.message, // message 已经包含了完整错误信息
             sys: true,
             time_stamp: Math.floor(Date.now() / 1000)
           }
