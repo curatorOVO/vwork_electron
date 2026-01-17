@@ -1,5 +1,8 @@
 <template>
-  <div class="vwork-manager-page">
+  <div 
+    class="vwork-manager-page"
+    @contextmenu="handleTableBlankContextMenu"
+  >
     <el-table
       :data="tableData"
       style="width: 100%"
@@ -23,8 +26,8 @@
       width="400px"
     >
       <el-radio-group v-model="portType">
-        <el-radio label="random">随机端口</el-radio>
-        <el-radio label="custom">指定端口</el-radio>
+        <el-radio value="random">随机端口</el-radio>
+        <el-radio value="custom">指定端口</el-radio>
       </el-radio-group>
       <el-input
         v-if="portType === 'custom'"
@@ -51,27 +54,63 @@
       </template>
     </el-dialog>
 
-    <!-- 右键菜单（使用Element Plus的Dropdown） -->
-    <el-dropdown ref="contextMenuRef" trigger="contextmenu" @command="handleMenuCommand">
-      <span style="display: none;"></span>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item divided :command="'add-random'">添加企微（随机端口）</el-dropdown-item>
-          <el-dropdown-item :command="'add-custom'">添加企微（指定端口）</el-dropdown-item>
-          <el-dropdown-item divided :command="'refresh-auth'" :disabled="!selectedRow">
-            刷新授权
-          </el-dropdown-item>
-          <el-dropdown-item :command="'copy-id'" :disabled="!selectedRow">复制ID</el-dropdown-item>
-          <el-dropdown-item divided :command="'set-tag'" :disabled="!selectedRow">设置标签</el-dropdown-item>
-          <el-dropdown-item :command="'exit-wechat'" :disabled="!selectedRow">退出微信</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
+    <!-- 自定义右键菜单 -->
+    <div 
+      v-if="contextMenuVisible"
+      class="custom-context-menu"
+      :style="{
+        left: contextMenuPosition.x + 'px',
+        top: contextMenuPosition.y + 'px'
+      }"
+    >
+      <div 
+        class="context-menu-item" 
+        @click="handleMenuCommand('add-random')"
+      >
+        添加企微（随机端口）
+      </div>
+      <div 
+        class="context-menu-item" 
+        @click="handleMenuCommand('add-custom')"
+      >
+        添加企微（指定端口）
+      </div>
+      <div class="context-menu-divider"></div>
+      <div 
+        class="context-menu-item" 
+        :class="{ disabled: !selectedRow }"
+        @click="selectedRow && handleMenuCommand('refresh-auth')"
+      >
+        刷新授权
+      </div>
+      <div 
+        class="context-menu-item" 
+        :class="{ disabled: !selectedRow }"
+        @click="selectedRow && handleMenuCommand('copy-id')"
+      >
+        复制ID
+      </div>
+      <div class="context-menu-divider"></div>
+      <div 
+        class="context-menu-item" 
+        :class="{ disabled: !selectedRow }"
+        @click="selectedRow && handleMenuCommand('set-tag')"
+      >
+        设置标签
+      </div>
+      <div 
+        class="context-menu-item" 
+        :class="{ disabled: !selectedRow }"
+        @click="selectedRow && handleMenuCommand('exit-wechat')"
+      >
+        退出微信
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore } from '../stores/config'
 import { VWorkApi } from '../utils/api'
@@ -79,65 +118,94 @@ import { VWorkApi } from '../utils/api'
 const configStore = useConfigStore()
 const tableData = ref([])
 const selectedRow = ref(null)
-const contextMenuRef = ref(null)
 const showAddDialog = ref(false)
 const portType = ref('random')
 const customPort = ref('')
 const showTagDialog = ref(false)
 const tagValue = ref('')
 const selectedRowIndex = ref(-1)
+const contextMenuVisible = ref(false)
+const contextMenuPosition = ref({ x: 0, y: 0 })
 
 const serverPort = computed(() => configStore.config.sys?.server_port || '8888')
 const injectKey = 'FUAyVli9Ee15q1wdbzpRsSjbyrVo2cDuhgNdLK3CWCW3Y95YepvLarcVszNGmETk'
 
 // 加载登录信息
 const loadLoginInfo = async () => {
+  // 直接从已加载的配置中获取数据（配置应该在 onMounted 中已加载）
   const loginInfo = configStore.getLoginInfo()
   const aliveWechat = []
   
   // 检查每个企微是否还在运行
   for (const item of loginInfo) {
-    if (item.port && item.pid) {
+    if (item.port) {
       const port = parseInt(item.port)
-      const pid = parseInt(item.pid)
+      const pid = item.pid ? parseInt(item.pid) : null
+      let isAlive = false
       
       // 检查端口是否在使用
       if (window.electronAPI) {
-        const portCheck = await window.electronAPI.isPortInUse(port)
-        if (portCheck.inUse) {
-          // 检查PID是否匹配
-          const currentPid = await getPidByPort(port)
-          if (currentPid === pid) {
-            // 企微还在运行，添加到表格
-            tableData.value.push({
-              nick_name: item.nick_name || '-',
-              user_id: item.user_id || '-',
-              port: String(item.port || '-'),
-              pid: String(item.pid || '-'),
-              expire: item.expire || '未授权',
-              label: item.label || ''
-            })
-            aliveWechat.push(item)
+        try {
+          const portCheck = await window.electronAPI.isPortInUse(port)
+          if (portCheck.inUse) {
+            // 检查PID是否匹配（如果有PID）
+            if (pid) {
+              const currentPid = await getPidByPort(port)
+              isAlive = (currentPid === pid)
+            } else {
+              // 没有PID时，只要端口在使用就认为存活
+              isAlive = true
+            }
           }
+        } catch (error) {
+          console.error('检查端口状态失败:', error)
         }
       } else {
         // 如果API不可用，直接添加（开发环境）
-        tableData.value.push({
-          nick_name: item.nick_name || '-',
-          user_id: item.user_id || '-',
-          port: String(item.port || '-'),
-          pid: String(item.pid || '-'),
-          expire: item.expire || '未授权',
-          label: item.label || ''
-        })
+        isAlive = true
+      }
+      
+      // 无论是否存活，都添加到表格显示
+      const tableItem = {
+        nick_name: item.nick_name || '-',
+        user_id: item.user_id || '-',
+        port: String(item.port || '-'),
+        pid: String(item.pid || '-'),
+        expire: item.expire || '未授权',
+        label: item.label || ''
+      }
+      tableData.value.push(tableItem)
+      
+      // 只有存活的才保留在配置中
+      if (isAlive) {
         aliveWechat.push(item)
       }
     }
   }
   
-  // 更新配置，只保留存活的企微
-  if (aliveWechat.length !== loginInfo.length) {
-    await configStore.updateLoginInfo(aliveWechat)
+  // 更新配置，只保留存活的企微（如果数据有变化才保存）
+  // 注意：这里会过滤掉已关闭的进程，避免配置中保存无效数据
+  // 线上环境需要过滤掉已关闭的进程，避免配置中保存无效数据
+  
+  // if (aliveWechat.length !== loginInfo.length) {
+  //   try {
+  //     console.log('过滤已关闭的进程，保留存活的企微')
+  //     await configStore.updateLoginInfo(aliveWechat)
+  //   } catch (error) {
+  //     console.error('更新配置失败（不影响显示）:', error)
+  //     // 保存失败不影响表格显示
+  //   }
+  // }
+
+  // 本地环境测试需要一条数据
+  if (aliveWechat.length !== loginInfo.length && aliveWechat.length > 1) {
+    try {
+      console.log('过滤已关闭的进程，保留存活的企微')
+      await configStore.updateLoginInfo(aliveWechat)
+    } catch (error) {
+      console.error('更新配置失败（不影响显示）:', error)
+      // 保存失败不影响表格显示
+    }
   }
 }
 
@@ -176,16 +244,54 @@ const deleteTableItem = (index) => {
   }
 }
 
-// 右键菜单处理
+// 右键菜单处理（表格行）
 const handleContextMenu = (row, column, event) => {
   event.preventDefault()
+  event.stopPropagation()
+  
   const index = tableData.value.findIndex(item => item === row)
   selectedRow.value = row
   selectedRowIndex.value = index
+  
+  // 保存鼠标位置
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  
+  // 显示菜单
+  contextMenuVisible.value = true
+}
+
+// 右键菜单处理（表格空白区域）
+const handleTableBlankContextMenu = (event) => {
+  // 检查是否点击在表格行上
+  const target = event.target
+  const trElement = target.closest('tbody tr')
+  
+  // 如果点击在表格行上（tbody内的tr），不处理（由 row-contextmenu 处理）
+  // row-contextmenu 事件会先触发并阻止事件冒泡
+  if (trElement && trElement.closest('.el-table__body')) {
+    return
+  }
+  
+  // 点击在空白区域（表格外部区域或表头等）
+  event.preventDefault()
+  event.stopPropagation()
+  
+  // 清空选中行
+  selectedRow.value = null
+  selectedRowIndex.value = -1
+  
+  // 保存鼠标位置
+  contextMenuPosition.value = { x: event.clientX, y: event.clientY }
+  
+  // 显示菜单（只显示"添加企微"选项，其他项会被禁用）
+  contextMenuVisible.value = true
 }
 
 // 菜单命令处理
 const handleMenuCommand = async (command) => {
+  // 关闭菜单
+  contextMenuVisible.value = false
+  
   switch (command) {
     case 'add-random':
     case 'add-custom':
@@ -207,6 +313,17 @@ const handleMenuCommand = async (command) => {
     case 'exit-wechat':
       await handleExitWechat()
       break
+  }
+}
+
+// 点击外部关闭菜单
+const handleClickOutside = (event) => {
+  if (contextMenuVisible.value) {
+    const contextMenu = document.querySelector('.custom-context-menu')
+    // 如果点击不在菜单内，关闭菜单
+    if (contextMenu && !contextMenu.contains(event.target)) {
+      contextMenuVisible.value = false
+    }
   }
 }
 
@@ -393,14 +510,17 @@ const refreshAuthForRow = async (rowIndex, userId, loginInfo) => {
     
     updateTableItem(rowIndex, { expire })
 
-    // 更新配置
+    // 更新配置：新登录的企微数据保存到配置中
+    // 注意：这里会基于当前配置列表（已过滤掉已关闭进程）进行更新或添加
     const loginInfoList = configStore.getLoginInfo()
     const index = loginInfoList.findIndex(item => item.user_id === userId)
     const updatedInfo = { ...loginInfo, expire }
     
     if (index >= 0) {
+      // 如果已存在相同 user_id，更新数据（可能来自历史数据）
       loginInfoList[index] = updatedInfo
     } else {
+      // 如果是新登录的企微，添加到配置中
       loginInfoList.push(updatedInfo)
     }
     
@@ -484,7 +604,25 @@ const handleExitWechat = async () => {
 }
 
 onMounted(async () => {
+  // 强制等待配置加载完成（无论配置是否已存在，都重新加载确保最新）
+  if (window.electronAPI) {
+    await configStore.loadConfig()
+  }
+  
   await loadLoginInfo()
+  
+  // 确保表格渲染
+  await nextTick()
+  
+  // 添加点击外部关闭菜单的监听
+  document.addEventListener('click', handleClickOutside)
+  document.addEventListener('contextmenu', handleClickOutside)
+})
+
+onUnmounted(() => {
+  // 移除监听
+  document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('contextmenu', handleClickOutside)
 })
 </script>
 
@@ -492,10 +630,47 @@ onMounted(async () => {
 .vwork-manager-page {
   height: 100%;
   padding: 10px;
+  position: relative;
 }
 
 :deep(.el-table) {
   font-size: 13px;
+}
+
+/* 自定义右键菜单样式 */
+.custom-context-menu {
+  position: fixed;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  padding: 4px 0;
+  z-index: 9999;
+  min-width: 160px;
+  font-size: 14px;
+}
+
+.context-menu-item {
+  padding: 8px 16px;
+  cursor: pointer;
+  color: #606266;
+  transition: background-color 0.2s;
+}
+
+.context-menu-item:hover:not(.disabled) {
+  background-color: #f5f7fa;
+  color: #409eff;
+}
+
+.context-menu-item.disabled {
+  color: #c0c4cc;
+  cursor: not-allowed;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: #e4e7ed;
+  margin: 4px 0;
 }
 </style>
 

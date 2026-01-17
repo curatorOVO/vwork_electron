@@ -25,13 +25,28 @@ export const useConfigStore = defineStore('config', () => {
       const result = await window.electronAPI.readConfig()
       if (result) {
         config.value = result
+        // 确保 custom 对象存在
+        if (!config.value.custom) {
+          config.value.custom = { login_info: [] }
+        }
         // 解析 login_info JSON字符串
-        if (config.value.custom?.login_info && typeof config.value.custom.login_info === 'string') {
-          try {
-            config.value.custom.login_info = JSON.parse(config.value.custom.login_info)
-          } catch (e) {
-            config.value.custom.login_info = []
+        if (config.value.custom.login_info) {
+          if (typeof config.value.custom.login_info === 'string') {
+            try {
+              // 移除可能的引号
+              let loginInfoStr = config.value.custom.login_info.trim()
+              if ((loginInfoStr.startsWith('"') && loginInfoStr.endsWith('"')) ||
+                  (loginInfoStr.startsWith("'") && loginInfoStr.endsWith("'"))) {
+                loginInfoStr = loginInfoStr.slice(1, -1)
+              }
+              config.value.custom.login_info = JSON.parse(loginInfoStr)
+            } catch (e) {
+              console.error('解析 login_info JSON 失败:', e, '原始值:', config.value.custom.login_info)
+              config.value.custom.login_info = []
+            }
           }
+        } else {
+          config.value.custom.login_info = []
         }
       }
     } catch (error) {
@@ -47,8 +62,8 @@ export const useConfigStore = defineStore('config', () => {
     
     try {
       loading.value = true
-      // 将 login_info 转换为 JSON 字符串
-      const configToSave = { ...newConfig }
+      // 深拷贝配置，将响应式对象转换为普通对象
+      const configToSave = JSON.parse(JSON.stringify(newConfig))
       if (configToSave.custom?.login_info && Array.isArray(configToSave.custom.login_info)) {
         configToSave.custom = {
           ...configToSave.custom,
@@ -77,8 +92,15 @@ export const useConfigStore = defineStore('config', () => {
     }
     if (typeof loginInfoStr === 'string') {
       try {
-        return JSON.parse(loginInfoStr)
+        let parsed = loginInfoStr.trim()
+        // 移除可能的引号
+        if ((parsed.startsWith('"') && parsed.endsWith('"')) ||
+            (parsed.startsWith("'") && parsed.endsWith("'"))) {
+          parsed = parsed.slice(1, -1)
+        }
+        return JSON.parse(parsed)
       } catch (e) {
+        console.error('getLoginInfo 解析失败:', e)
         return []
       }
     }
