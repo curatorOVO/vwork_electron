@@ -94,18 +94,44 @@ async function saveLogToFile(data) {
 
 /**
  * 异步发送回调
+ * @param {string} url - 回调地址
+ * @param {object} data - 回调数据
+ * @returns {Promise<{success: boolean, message: string, data: any}>} 返回发送结果
  */
 async function sendCallback(url, data) {
+  const startTime = Date.now()
   try {
     const response = await axios.post(url, data, {
       timeout: 10000
     })
-    return response.data
-  } catch (error) {
-    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-      return false
+    const duration = Date.now() - startTime
+    console.log(`✅ 回调发送成功: ${url} (耗时: ${duration}ms)`)
+    return {
+      success: true,
+      message: '回调发送成功',
+      data: response.data,
+      duration
     }
-    return false
+  } catch (error) {
+    const duration = Date.now() - startTime
+    let errorMessage = '回调发送失败'
+    if (error.code === 'ECONNREFUSED') {
+      errorMessage = `回调发送失败: 无法连接到 ${url} (连接被拒绝)`
+    } else if (error.code === 'ETIMEDOUT') {
+      errorMessage = `回调发送失败: 请求超时 (${url})`
+    } else if (error.response) {
+      errorMessage = `回调发送失败: HTTP ${error.response.status} - ${error.response.statusText}`
+    } else {
+      errorMessage = `回调发送失败: ${error.message}`
+    }
+    console.error(`❌ ${errorMessage} (耗时: ${duration}ms)`)
+    return {
+      success: false,
+      message: errorMessage,
+      data: null,
+      duration,
+      error: error.code || error.message
+    }
   }
 }
 

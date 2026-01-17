@@ -53,10 +53,10 @@ const formatTime = (timestamp) => {
 
 // 获取消息类型文本
 const getMessageType = (data) => {
-  if (data.sys) return '框架提醒'
+  if (data.sys) return '系统提示'
   if (data.is_self_msg === 1) return '发出消息'
   if (data.msg_id) return '收到消息'
-  return '框架提醒'
+  return '系统提示'
 }
 
 // 获取消息颜色
@@ -81,7 +81,7 @@ const addLog = (data) => {
   const logEntry = {
     index: logs.value.length + 1,
     time: formatTime(timestamp),
-    sender: data.self_user_id || '框架提醒',
+    sender: data.self_user_id || '系统提示',
     type: getMessageType(data),
     message: content,
     rawData: data

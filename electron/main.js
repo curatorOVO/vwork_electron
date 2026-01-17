@@ -54,6 +54,7 @@ try {
   }
 }
 const axios = require('axios')
+const { saveLogToFile } = require('./commons/common')
 
 let mainWindow
 let messageServer = null // 消息接收服务器
@@ -559,9 +560,66 @@ ipcMain.handle('get-auth-info', async (event, wxid) => {
   const authUrl = `http://${backendIp}:5516/polarBear/getAuthInfo/${wxid}`
   try {
     const response = await axios.get(authUrl, { timeout: 10000 })
-    return { success: true, data: response.data }
+    const result = { success: true, data: response.data }
+    
+    // 读取配置，检查是否开启日志
+    const config = readConfig()
+    const openLog = config.sys?.open_log === 'true' || config.sys?.open_log === true
+    const saveLog = config.sys?.save_log === 'true' || config.sys?.save_log === true
+    
+    // 如果开启了日志，写入运行日志
+    if (openLog && saveLog) {
+      let expire = '未授权'
+      if (result.data && result.data.data) {
+        expire = result.data.data.expire || '未授权'
+      }
+      
+      const logData = {
+        content: `刷新授权: ${wxid}, 到期时间: ${expire}`,
+        sys: true,
+        time_stamp: Math.floor(Date.now() / 1000)
+      }
+      
+      // 异步写入日志，不阻塞返回值
+      saveLogToFile(logData).catch(err => {
+        console.error(`保存授权刷新日志失败: ${err.message}`)
+      })
+      
+      // 同时推送到前端显示（如果开启了日志推送）
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('fastapi-message', logData)
+      }
+    }
+    
+    return result
   } catch (error) {
-    return { success: false, msg: '获取授权信息失败，请稍后重试', data: null }
+    const result = { success: false, msg: '获取授权信息失败，请稍后重试', data: null }
+    
+    // 读取配置，检查是否开启日志
+    const config = readConfig()
+    const openLog = config.sys?.open_log === 'true' || config.sys?.open_log === true
+    const saveLog = config.sys?.save_log === 'true' || config.sys?.save_log === true
+    
+    // 如果开启了日志，写入错误日志
+    if (openLog && saveLog) {
+      const logData = {
+        content: `刷新授权失败: ${wxid}, 错误: ${error.message || '获取授权信息失败，请稍后重试'}`,
+        sys: true,
+        time_stamp: Math.floor(Date.now() / 1000)
+      }
+      
+      // 异步写入日志，不阻塞返回值
+      saveLogToFile(logData).catch(err => {
+        console.error(`保存授权刷新错误日志失败: ${err.message}`)
+      })
+      
+      // 同时推送到前端显示（如果开启了日志推送）
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('fastapi-message', logData)
+      }
+    }
+    
+    return result
   }
 })
 

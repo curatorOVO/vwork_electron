@@ -69,7 +69,33 @@ app.post('/msg', async (req, res) => {
     // 如果授权有效，发送回调
     if (valid_auth) {
       if (ini_config.callback && ini_config.callback.includes('http') && ini_config.callback.includes('://')) {
-        await sendCallback(ini_config.callback, data)
+        const callbackResult = await sendCallback(ini_config.callback, data)
+        
+        // 如果开启了日志，将回调发送状态推送到前端
+        if (ini_config.open_log) {
+          const callbackLogData = {
+            content: callbackResult.success 
+              ? `回调发送成功: ${ini_config.callback} (耗时: ${callbackResult.duration}ms)`
+              : callbackResult.message, // message 已经包含了完整错误信息，不需要再加前缀
+            sys: true,
+            time_stamp: Math.floor(Date.now() / 1000)
+          }
+          
+          try {
+            await axios.post(MESSAGE_SERVER_URL, callbackLogData, {
+              timeout: 1000
+            })
+          } catch (error) {
+            console.error(`推送回调日志到Electron失败: ${error.message}`)
+          }
+          
+          // 如果开启了保存日志功能，保存回调日志到文件
+          if (ini_config.save_log) {
+            saveLogToFile(callbackLogData).catch(err => {
+              console.error(`保存回调日志到文件失败: ${err.message}`)
+            })
+          }
+        }
       }
     } else {
       // 授权过期，推送错误消息
