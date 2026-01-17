@@ -187,18 +187,7 @@ const loadLoginInfo = async () => {
   // 注意：这里会过滤掉已关闭的进程，避免配置中保存无效数据
   // 线上环境需要过滤掉已关闭的进程，避免配置中保存无效数据
   
-  // if (aliveWechat.length !== loginInfo.length) {
-  //   try {
-  //     console.log('过滤已关闭的进程，保留存活的企微')
-  //     await configStore.updateLoginInfo(aliveWechat)
-  //   } catch (error) {
-  //     console.error('更新配置失败（不影响显示）:', error)
-  //     // 保存失败不影响表格显示
-  //   }
-  // }
-
-  // 本地环境测试需要一条数据
-  if (aliveWechat.length !== loginInfo.length && aliveWechat.length > 1) {
+  if (aliveWechat.length !== loginInfo.length) {
     try {
       console.log('过滤已关闭的进程，保留存活的企微')
       await configStore.updateLoginInfo(aliveWechat)
@@ -387,6 +376,7 @@ const checkLoginStatus = async (port, rowIndex) => {
   let attempts = 0
   let loginCacheKey = `login_${port}`
   let loginCacheExpire = Date.now() + 120000 // 2分钟缓存
+  const startupGracePeriod = 3 // 启动宽限期：前3次检查（6秒内）不检查端口，给进程启动时间
 
   const checkInterval = setInterval(async () => {
     attempts++
@@ -403,8 +393,10 @@ const checkLoginStatus = async (port, rowIndex) => {
       return
     }
     
-    // 检查端口是否还在使用
-    if (window.electronAPI) {
+    // 检查端口是否还在使用（启动宽限期后开始检查）
+    // 注入工具返回成功时，企微客户端可能还没有完全启动并监听端口
+    // 所以前几次检查跳过端口检查，给进程启动时间
+    if (attempts > startupGracePeriod && window.electronAPI) {
       const portCheck = await window.electronAPI.isPortInUse(port)
       if (!portCheck.inUse) {
         clearInterval(checkInterval)
@@ -422,10 +414,10 @@ const checkLoginStatus = async (port, rowIndex) => {
           // 已登录
           clearInterval(checkInterval)
           const personalInfo = await VWorkApi.getPersonalInfo(port)
+          
           if (personalInfo && personalInfo.data) {
-            const data = personalInfo.data.data
+            const data = personalInfo.data || personalInfo.data.data
             const pid = await getPidByPort(port)
-            
             updateTableItem(rowIndex, {
               nick_name: data.nick_name || '-',
               user_id: data.user_id || '-',
