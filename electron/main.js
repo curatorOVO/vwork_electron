@@ -3,7 +3,6 @@ const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
 const net = require('net')
-const os = require('os')
 let ini
 try {
   ini = require('ini')
@@ -19,8 +18,16 @@ try {
           currentSection = line.slice(1, -1)
           result[currentSection] = {}
         } else if (line.includes('=') && currentSection) {
-          const [key, ...valueParts] = line.split('=')
-          result[currentSection][key.trim()] = valueParts.join('=').trim()
+          // 只分割第一个 =，以支持值中包含 = 的情况（如URL）
+          const equalIndex = line.indexOf('=')
+          const key = line.substring(0, equalIndex).trim()
+          let value = line.substring(equalIndex + 1).trim()
+          // 如果值被引号包裹，移除引号并处理转义的引号
+          if ((value.startsWith('"') && value.endsWith('"')) || 
+              (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\'/g, "'")
+          }
+          result[currentSection][key] = value
         }
       })
       return result
@@ -30,7 +37,15 @@ try {
       Object.keys(obj).forEach(section => {
         result += `[${section}]\n`
         Object.keys(obj[section]).forEach(key => {
-          result += `${key} = ${obj[section][key]}\n`
+          const value = obj[section][key]
+          // 如果值是字符串且包含特殊字符、空格或JSON数组/对象，则添加引号并转义内部引号
+          if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{') || value.includes(' ') || value.includes('='))) {
+            // 转义字符串中的引号
+            const escapedValue = value.replace(/"/g, '\\"')
+            result += `${key}="${escapedValue}"\n`
+          } else {
+            result += `${key}=${value}\n`
+          }
         })
         result += '\n'
       })
@@ -41,7 +56,6 @@ try {
 const axios = require('axios')
 
 let mainWindow
-let fastapiProcess = null
 let messageServer = null // 消息接收服务器
 
 // 获取应用资源路径（处理打包后的路径）
@@ -55,90 +69,6 @@ const getAppPath = () => {
   }
   // 开发环境：返回 electron 目录的父目录（项目根目录）
   return path.join(__dirname, '..')
-}
-
-// 查找Python可执行文件
-const findPython = () => {
-  const { execSync } = require('child_process')
-  const possiblePaths = []
-  
-  // Windows系统
-  if (process.platform === 'win32') {
-    // 1. 尝试通过 where 命令查找
-    try {
-      const pythonPath = execSync('where python', { encoding: 'utf-8', timeout: 2000 }).trim().split('\n')[0]
-      if (pythonPath && !pythonPath.includes('not found')) {
-        possiblePaths.push(pythonPath)
-      }
-    } catch (e) {
-      // 忽略错误
-    }
-    
-    // 2. 尝试通过 where 命令查找 python3
-    try {
-      const python3Path = execSync('where python3', { encoding: 'utf-8', timeout: 2000 }).trim().split('\n')[0]
-      if (python3Path && !python3Path.includes('not found')) {
-        possiblePaths.push(python3Path)
-      }
-    } catch (e) {
-      // 忽略错误
-    }
-    
-    // 3. 尝试通过 py launcher
-    try {
-      const pyPath = execSync('where py', { encoding: 'utf-8', timeout: 2000 }).trim().split('\n')[0]
-      if (pyPath && !pyPath.includes('not found')) {
-        possiblePaths.push(pyPath)
-      }
-    } catch (e) {
-      // 忽略错误
-    }
-    
-    // 4. 常见安装路径
-    const commonPaths = [
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python39', 'python.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python310', 'python.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python311', 'python.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Programs', 'Python', 'Python312', 'python.exe'),
-      path.join(process.env.PROGRAMFILES || '', 'Python39', 'python.exe'),
-      path.join(process.env.PROGRAMFILES || '', 'Python310', 'python.exe'),
-      path.join(process.env.PROGRAMFILES || '', 'Python311', 'python.exe'),
-      path.join(process.env.PROGRAMFILES || '', 'Python312', 'python.exe'),
-      path.join(process.env.PROGRAMFILES || 'C:\\Program Files', 'Python', 'python.exe'),
-    ]
-    possiblePaths.push(...commonPaths)
-    
-    // 5. 打包后的路径
-    if (process.resourcesPath) {
-      possiblePaths.push(path.join(process.resourcesPath, 'python', 'python.exe'))
-    }
-  } else {
-    // Linux/Mac系统
-    possiblePaths.push('python3', 'python')
-  }
-  
-  // 测试每个路径
-  for (const pythonPath of possiblePaths) {
-    try {
-      const result = execSync(`"${pythonPath}" --version`, { 
-        encoding: 'utf-8', 
-        timeout: 2000,
-        stdio: 'pipe'
-      })
-      if (result && result.trim()) {
-        console.log(`找到Python: ${pythonPath}`)
-        return pythonPath
-      }
-    } catch (e) {
-      // 继续尝试下一个路径
-      continue
-    }
-  }
-  
-  // 如果都找不到，返回默认值并输出警告
-  console.error('警告: 未找到Python可执行文件，将使用默认值 "python"')
-  console.error('请确保Python已安装并添加到PATH环境变量中')
-  return 'python'
 }
 
 // 启动消息接收服务器（用于接收FastAPI推送的消息）

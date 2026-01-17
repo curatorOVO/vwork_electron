@@ -6,7 +6,7 @@
 const express = require('express')
 const cors = require('cors')
 const axios = require('axios')
-const { readIni, sendCallback, validAuthDatetime, killProcessByPort } = require('./commons/common')
+const { readIni, sendCallback, validAuthDatetime, killProcessByPort, saveLogToFile } = require('./commons/common')
 
 const app = express()
 
@@ -57,6 +57,13 @@ app.post('/msg', async (req, res) => {
       } catch (error) {
         console.error(`推送消息到Electron失败: ${error.message}`)
       }
+      
+      // 如果开启了保存日志功能，保存日志到文件
+      if (ini_config.save_log) {
+        saveLogToFile(data).catch(err => {
+          console.error(`保存日志到文件失败: ${err.message}`)
+        })
+      }
     }
 
     // 如果授权有效，发送回调
@@ -77,36 +84,19 @@ app.post('/msg', async (req, res) => {
       } catch (error) {
         console.error(`推送错误消息失败: ${error.message}`)
       }
+      
+      // 如果开启了保存日志功能，保存错误消息到日志文件
+      if (ini_config.open_log && ini_config.save_log) {
+        saveLogToFile(error_data).catch(err => {
+          console.error(`保存错误日志到文件失败: ${err.message}`)
+        })
+      }
     }
 
     res.json({ message: 'success' })
   } catch (error) {
     console.error(`处理消息错误: ${error.message}`)
     res.json({ message: 'success' }) // 即使出错也返回success，避免企微重试
-  }
-})
-
-/**
- * 暴露出去的API - 代理到企微端口
- * 注意：这个端点实际上不应该被直接调用
- * 应该直接调用企微的HTTP端口（如8989）的/api端点
- * 这里保留是为了兼容性，但实际使用中应该直接调用企微端口
- */
-app.post('/api', async (req, res) => {
-  try {
-    const data = req.body
-    const port = parseInt(req.query.port) || 8989
-    const url = `http://127.0.0.1:${port}/api`
-
-    const response = await axios.post(url, data, {
-      timeout: 10000
-    })
-    res.json(response.data)
-  } catch (error) {
-    res.json({
-      message: error.message,
-      success: false
-    })
   }
 })
 

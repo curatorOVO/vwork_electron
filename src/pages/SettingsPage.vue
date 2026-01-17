@@ -57,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { QuestionFilled } from '@element-plus/icons-vue'
 import { useConfigStore } from '../stores/config'
@@ -126,7 +126,25 @@ const handleSave = async () => {
   }
 }
 
-onMounted(() => {
+// 监听配置变化，自动更新表单（当配置加载完成后）
+watch(
+  () => configStore.config.sys,
+  (newSys) => {
+    if (newSys && newSys.server_port) {
+      loadConfig()
+    }
+  },
+  { deep: true }
+)
+
+onMounted(async () => {
+  // 确保配置已加载（检查 callback 是否存在，避免空字符串误判）
+  const hasLoaded = configStore.config.sys?.server_port && 
+                    (configStore.config.sys?.callback !== undefined)
+  
+  if (!hasLoaded) {
+    await configStore.loadConfig()
+  }
   loadConfig()
 })
 </script>

@@ -23,6 +23,76 @@ function getConfigPath() {
 }
 
 /**
+ * 获取应用根目录路径
+ */
+function getAppRootPath() {
+  // 获取electron目录的绝对路径
+  const electronDir = __dirname.replace(/[\\/]commons$/, '')
+  // 返回项目根目录（electron目录的父目录）
+  return path.dirname(electronDir)
+}
+
+/**
+ * 保存日志到文件
+ * @param {object} data - 日志数据对象
+ * @returns {Promise<boolean>} 保存成功返回true，失败返回false
+ */
+async function saveLogToFile(data) {
+  try {
+    const appRoot = getAppRootPath()
+    const logDir = path.join(appRoot, 'logs', 'runLog')
+    
+    // 确保日志目录存在
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true })
+    }
+    
+    // 获取当前日期，格式：YYYY-MM-DD（使用本地时间）
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = String(now.getMonth() + 1).padStart(2, '0')
+    const day = String(now.getDate()).padStart(2, '0')
+    const dateStr = `${year}-${month}-${day}`
+    const logFileName = `${dateStr}.log`
+    const logFilePath = path.join(logDir, logFileName)
+    
+    // 格式化时间戳
+    const timestamp = data.time_stamp || Math.floor(now.getTime() / 1000)
+    const logTime = new Date(timestamp * 1000)
+    const timeStr = logTime.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).replace(/\//g, '-')
+    
+    // 格式化日志内容
+    let logContent = ''
+    if (data.sys) {
+      // 系统消息
+      logContent = `[${timeStr}] [系统] ${data.content || ''}\n`
+    } else {
+      // 普通消息
+      const sender = data.sender || data.nick_name || ''
+      const userId = data.user_id || ''
+      const content = data.content || ''
+      const msgType = data.is_self_msg === 1 ? '[发出]' : '[收到]'
+      logContent = `[${timeStr}] ${msgType} ${sender}(${userId}): ${content}\n`
+    }
+    
+    // 追加写入文件
+    fs.appendFileSync(logFilePath, logContent, 'utf-8')
+    return true
+  } catch (error) {
+    console.error(`保存日志失败: ${error.message}`)
+    return false
+  }
+}
+
+/**
  * 异步发送回调
  */
 async function sendCallback(url, data) {
@@ -218,10 +288,12 @@ function readIni(configPath = null) {
 
 module.exports = {
   getConfigPath,
+  getAppRootPath,
   sendCallback,
   validAuthDatetime,
   isPortInUse,
   killProcessByPort,
-  readIni
+  readIni,
+  saveLogToFile
 }
 
