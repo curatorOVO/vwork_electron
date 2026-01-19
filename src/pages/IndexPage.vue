@@ -1,7 +1,7 @@
 <template>
   <div class="index-page">
     <div class="logo-section">
-      <img src="../assets/logo.jpg" alt="LOGO" class="logo-img" />
+      <img src="../assets/bg.png" alt="LOGO" class="logo-img" />
       <h2 class="frame-name">{{ frameName }}</h2>
     </div>
     

@@ -291,7 +291,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       // 在打包后，preload 脚本在 app.asar 中，路径会自动处理
     },
-    icon: path.join(__dirname, '../src/assets/logo.jpg'),
+    icon: path.join(__dirname, '../src/assets/bg.png'),
     title: '北极熊企微框架Pro v1.1'
   })
 

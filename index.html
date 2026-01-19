@@ -2,9 +2,81 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8">
-    <link rel="icon" type="image/jpeg" href="/vwork_electron/src/assets/logo.jpg">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="北极熊企微框架Pro - 企业微信管理工具">
+    <meta name="keywords" content="企微,企业微信,管理工具,北极熊">
+    <meta name="author" content="北极熊">
+    
+    <!-- 性能优化 -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:;">
+    
+    <!-- 图标设置 -->
+    <link rel="icon" type="image/png" href="/src/assets/logo.jpg">
+    <link rel="apple-touch-icon" href="/src/assets/logo.jpg">
+    
+    <!-- 防止页面缩放（Electron 应用通常不需要用户缩放） -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <!-- 字体预加载优化 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+    
+    <!-- 主题色设置 -->
+    <meta name="theme-color" content="#409EFF">
+    
     <title>北极熊企微框架Pro</title>
+    
+    <style>
+      /* 页面加载前的样式，避免闪烁 */
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        background-color: #f0f2f5;
+      }
+      
+      #app {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* 加载动画（可选） */
+      .loading-spinner {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+      }
+      
+      /* 隐藏滚动条但保持功能 */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
