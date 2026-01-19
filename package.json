@@ -7,9 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "convert-icon": "node scripts/convert-icon.js",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "electron:build:dir": "npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
+    "electron:build": "npm run convert-icon && npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "electron:build:dir": "npm run convert-icon && npm run build && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --dir",
     "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
@@ -34,6 +35,8 @@
     "concurrently": "^8.2.2",
     "electron": "^28.1.4",
     "electron-builder": "^24.9.1",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5",
     "vite": "^5.1.0",
     "wait-on": "^7.2.0"
   },
@@ -43,14 +46,18 @@
   "build": {
     "appId": "com.vwork.framework",
     "productName": "北极熊企微框架Pro",
+    "icon": "build/icon.ico",
     "directories": {
-      "output": "dist-electron"
+      "output": "dist-electron",
+      "buildResources": "build"
     },
     "nsis": {
       "oneClick": false,
       "language": "2052",
       "perMachine": true,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     },
     "files": [
       "dist/**/*",
@@ -61,16 +68,22 @@
       {
         "from": "bin",
         "to": "bin",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "conf",
         "to": "conf",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
       "target": "nsis",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true,
       "sign": null,
       "signingHashAlgorithms": []
     }

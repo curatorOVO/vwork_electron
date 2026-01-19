@@ -280,6 +280,23 @@ const saveConfig = (config) => {
 }
 
 function createWindow() {
+  // 图标路径：开发环境使用源文件，生产环境使用打包后的文件
+  let iconPath
+  if (app.isPackaged) {
+    // 打包后：图标应该在 dist 目录中（通过 public 目录复制）
+    iconPath = path.join(app.getAppPath(), 'dist', 'bg.png')
+    // 如果 dist 中没有，尝试从 app.asar 外部查找
+    if (!fs.existsSync(iconPath)) {
+      iconPath = path.join(process.resourcesPath, '..', 'dist', 'bg.png')
+    }
+  } else {
+    // 开发环境：使用 public 目录或 src/assets 目录
+    iconPath = path.join(__dirname, '../public/bg.png')
+    if (!fs.existsSync(iconPath)) {
+      iconPath = path.join(__dirname, '../src/assets/bg.png')
+    }
+  }
+
   mainWindow = new BrowserWindow({
     width: 1000,
     height: 800,
@@ -291,7 +308,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       // 在打包后，preload 脚本在 app.asar 中，路径会自动处理
     },
-    icon: path.join(__dirname, '../src/assets/bg.png'),
+    icon: iconPath,
     title: '北极熊企微框架Pro v1.1'
   })
 
