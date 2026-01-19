@@ -22,18 +22,12 @@
     <!-- 添加企微对话框 -->
     <el-dialog
       v-model="showAddDialog"
-      title="添加企微"
+      title="添加企微（指定端口）"
       width="400px"
     >
-      <el-radio-group v-model="portType">
-        <el-radio value="random">随机端口</el-radio>
-        <el-radio value="custom">指定端口</el-radio>
-      </el-radio-group>
       <el-input
-        v-if="portType === 'custom'"
         v-model="customPort"
         placeholder="请输入端口号(1024-10000)"
-        style="margin-top: 20px"
       />
       <template #footer>
         <el-button @click="showAddDialog = false">取消</el-button>
@@ -64,16 +58,30 @@
       }"
     >
       <div 
-        class="context-menu-item" 
-        @click="handleMenuCommand('add-random')"
+        class="context-menu-item context-menu-parent"
+        @click.stop="toggleSubMenu"
       >
-        添加企微（随机端口）
-      </div>
-      <div 
-        class="context-menu-item" 
-        @click="handleMenuCommand('add-custom')"
-      >
-        添加企微（指定端口）
+        添加企微
+        <span class="submenu-arrow">▶</span>
+        <!-- 子菜单 -->
+        <div 
+          v-if="showSubMenu"
+          class="context-submenu"
+          @click.stop
+        >
+          <div 
+            class="context-menu-item" 
+            @click="handleMenuCommand('add-random')"
+          >
+            随机端口
+          </div>
+          <div 
+            class="context-menu-item" 
+            @click="handleMenuCommand('add-custom')"
+          >
+            指定端口
+          </div>
+        </div>
       </div>
       <div class="context-menu-divider"></div>
       <div 
@@ -119,13 +127,13 @@ const configStore = useConfigStore()
 const tableData = ref([])
 const selectedRow = ref(null)
 const showAddDialog = ref(false)
-const portType = ref('random')
 const customPort = ref('')
 const showTagDialog = ref(false)
 const tagValue = ref('')
 const selectedRowIndex = ref(-1)
 const contextMenuVisible = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
+const showSubMenu = ref(false)
 
 const serverPort = computed(() => configStore.config.sys?.server_port || '8888')
 const injectKey = 'FUAyVli9Ee15q1wdbzpRsSjbyrVo2cDuhgNdLK3CWCW3Y95YepvLarcVszNGmETk'
@@ -245,8 +253,9 @@ const handleContextMenu = (row, column, event) => {
   // 保存鼠标位置
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   
-  // 显示菜单
+  // 显示菜单，重置子菜单状态
   contextMenuVisible.value = true
+  showSubMenu.value = false
 }
 
 // 右键菜单处理（表格空白区域）
@@ -272,19 +281,30 @@ const handleTableBlankContextMenu = (event) => {
   // 保存鼠标位置
   contextMenuPosition.value = { x: event.clientX, y: event.clientY }
   
-  // 显示菜单（只显示"添加企微"选项，其他项会被禁用）
+  // 显示菜单（只显示"添加企微"选项，其他项会被禁用），重置子菜单状态
   contextMenuVisible.value = true
+  showSubMenu.value = false
+}
+
+// 切换子菜单显示状态
+const toggleSubMenu = () => {
+  showSubMenu.value = !showSubMenu.value
 }
 
 // 菜单命令处理
 const handleMenuCommand = async (command) => {
-  // 关闭菜单
+  // 关闭菜单和子菜单
   contextMenuVisible.value = false
+  showSubMenu.value = false
   
   switch (command) {
     case 'add-random':
+      // 随机端口直接执行，不打开弹窗
+      await executeAddWechat('random', null)
+      break
     case 'add-custom':
-      portType.value = command === 'add-random' ? 'random' : 'custom'
+      // 指定端口打开弹窗
+      customPort.value = ''
       showAddDialog.value = true
       break
     case 'refresh-auth':
@@ -309,17 +329,21 @@ const handleMenuCommand = async (command) => {
 const handleClickOutside = (event) => {
   if (contextMenuVisible.value) {
     const contextMenu = document.querySelector('.custom-context-menu')
-    // 如果点击不在菜单内，关闭菜单
-    if (contextMenu && !contextMenu.contains(event.target)) {
+    const subMenu = document.querySelector('.context-submenu')
+    // 如果点击不在菜单内（包括子菜单），关闭菜单和子菜单
+    const isClickInMenu = contextMenu && contextMenu.contains(event.target)
+    const isClickInSubMenu = subMenu && subMenu.contains(event.target)
+    if (!isClickInMenu && !isClickInSubMenu) {
       contextMenuVisible.value = false
+      showSubMenu.value = false
     }
   }
 }
 
-// 添加企微
-const handleAddWechat = async () => {
+// 执行添加企微的核心逻辑
+const executeAddWechat = async (portType, customPortValue) => {
   let port
-  if (portType.value === 'random') {
+  if (portType === 'random') {
     // 查找可用端口
     if (window.electronAPI) {
       const result = await window.electronAPI.findAvailablePort(1024)
@@ -333,7 +357,7 @@ const handleAddWechat = async () => {
       return
     }
   } else {
-    port = parseInt(customPort.value)
+    port = parseInt(customPortValue)
     if (isNaN(port) || port <= 1024 || port > 10000) {
       ElMessage.warning('端口可用范围(1024, 10000]')
       return
@@ -357,7 +381,6 @@ const handleAddWechat = async () => {
       if (result.success || (result.output && result.output.includes('注入成功'))) {
         ElMessage.success('企微启动成功，正在登录...')
         const rowIndex = addTableItem({ nick_name: '登录中', port: String(port) })
-        showAddDialog.value = false
         
         // 定时检查登录状态
         checkLoginStatus(port, rowIndex)
@@ -370,13 +393,19 @@ const handleAddWechat = async () => {
   }
 }
 
+// 添加企微（从弹窗调用）
+const handleAddWechat = async () => {
+  await executeAddWechat('custom', customPort.value)
+  showAddDialog.value = false
+}
+
 // 检查登录状态
 const checkLoginStatus = async (port, rowIndex) => {
   const maxAttempts = 120 // 最多检查120次（4分钟，每2秒一次）
   let attempts = 0
   let loginCacheKey = `login_${port}`
   let loginCacheExpire = Date.now() + 120000 // 2分钟缓存
-  const startupGracePeriod = 3 // 启动宽限期：前3次检查（6秒内）不检查端口，给进程启动时间
+  const startupGracePeriod = 9 // 启动宽限期：前9次检查（18秒内）不检查端口，给进程启动时间
 
   const checkInterval = setInterval(async () => {
     attempts++
@@ -408,6 +437,7 @@ const checkLoginStatus = async (port, rowIndex) => {
     
     try {
       const result = await VWorkApi.getLoginStatus(port)
+      console.log("获取的登录状态", result);
       if (result && result.data) {
         const status = result.data.status
         if (status === 1) {
@@ -663,6 +693,35 @@ onUnmounted(() => {
   height: 1px;
   background-color: #e4e7ed;
   margin: 4px 0;
+}
+
+/* 父菜单项样式 */
+.context-menu-parent {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.submenu-arrow {
+  font-size: 10px;
+  color: #909399;
+  margin-left: 8px;
+}
+
+/* 子菜单样式 */
+.context-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 4px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 4px;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+  padding: 4px 0;
+  min-width: 120px;
+  z-index: 10000;
 }
 </style>
 

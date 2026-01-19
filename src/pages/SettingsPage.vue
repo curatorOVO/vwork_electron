@@ -42,7 +42,7 @@
       <div class="form-item">
         <el-checkbox v-model="formData.open_log">开启日志</el-checkbox>
         <el-checkbox v-model="formData.save_log">保存日志</el-checkbox>
-        <el-tooltip content="开启之后，会把运行日志保存到logs/runLog下&#10;如果需要开启的话，需要先打开[开启日志]才能生效" placement="top">
+        <el-tooltip content="开启之后，会把运行日志保存到logs/runLog下&#10;如果需要开启的话，需要先打开[开启日志]才能生效 修改后需要重启框架才能生效" placement="top">
           <span style="margin-left: 8px"><el-icon><QuestionFilled /></el-icon></span>
         </el-tooltip>
       </div>
