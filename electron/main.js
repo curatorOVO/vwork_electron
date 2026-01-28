@@ -298,9 +298,9 @@ function createWindow() {
   }
 
   mainWindow = new BrowserWindow({
-    width: 1000,
+    width: 1100,
     height: 800,
-    minWidth: 800,
+    minWidth: 900,
     minHeight: 600,
     webPreferences: {
       nodeIntegration: false,
@@ -527,11 +527,16 @@ ipcMain.handle('check-port', async (event, port) => {
   })
 })
 
-// 查找可用端口
+// 查找可用端口（随机生成并检查是否被占用）
 ipcMain.handle('find-available-port', async (event, startPort = 1024) => {
   const net = require('net')
-  for (let port = startPort; port < 10000; port++) {
-    const result = await new Promise((resolve) => {
+  const minPort = startPort || 1024
+  const maxPort = 65535
+  const maxAttempts = 1000 // 最大尝试次数，避免无限循环
+  
+  // 检查端口是否可用的辅助函数
+  const isPortAvailable = (port) => {
+    return new Promise((resolve) => {
       const server = net.createServer()
       server.listen(port, () => {
         server.once('close', () => resolve(true))
@@ -539,10 +544,31 @@ ipcMain.handle('find-available-port', async (event, startPort = 1024) => {
       })
       server.on('error', () => resolve(false))
     })
-    if (result) {
+  }
+  
+  // 生成随机端口
+  const generateRandomPort = () => {
+    return Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort
+  }
+  
+  // 随机生成并检查端口，直到找到可用端口
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const port = generateRandomPort()
+    const isAvailable = await isPortAvailable(port)
+    
+    if (isAvailable) {
       return { port }
     }
   }
+  
+  // 如果随机生成失败，回退到顺序查找
+  for (let port = minPort; port <= maxPort; port++) {
+    const isAvailable = await isPortAvailable(port)
+    if (isAvailable) {
+      return { port }
+    }
+  }
+  
   return { port: null }
 })
 
