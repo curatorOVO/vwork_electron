@@ -54,7 +54,7 @@ try {
   }
 }
 const axios = require('axios')
-const { saveLogToFile } = require('./commons/common')
+const { saveLogToFile, getConfigPath } = require('./commons/common')
 
 let mainWindow
 let messageServer = null // 消息接收服务器
@@ -246,7 +246,8 @@ const killProcessByPort = (port) => {
 
 // 读取配置文件
 const readConfig = () => {
-  const configPath = path.join(getAppPath(), 'conf/conf.ini')
+  // 使用 commons/common.js 中的 getConfigPath，确保开发环境和打包环境路径一致
+  const configPath = getConfigPath()
   try {
     const content = fs.readFileSync(configPath, 'utf-8')
     return ini.parse(content)
@@ -268,7 +269,8 @@ const readConfig = () => {
 
 // 保存配置文件
 const saveConfig = (config) => {
-  const configPath = path.join(getAppPath(), 'conf/conf.ini')
+  // 使用 commons/common.js 中的 getConfigPath，确保与读取路径一致
+  const configPath = getConfigPath()
   try {
     const content = ini.stringify(config)
     fs.writeFileSync(configPath, content, 'utf-8')

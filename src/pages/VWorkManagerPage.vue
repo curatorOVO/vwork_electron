@@ -138,70 +138,78 @@ const showSubMenu = ref(false)
 const serverPort = computed(() => configStore.config.sys?.server_port || '8888')
 const injectKey = 'FUAyVli9Ee15q1wdbzpRsSjbyrVo2cDuhgNdLK3CWCW3Y95YepvLarcVszNGmETk'
 
-// 加载登录信息
+// 启动时加载登录信息，只负责把配置中的账号展示到表格
 const loadLoginInfo = async () => {
-  // 直接从已加载的配置中获取数据（配置应该在 onMounted 中已加载）
   const loginInfo = configStore.getLoginInfo()
-  const aliveWechat = []
-  
-  // 检查每个企微是否还在运行
+  tableData.value = []
+
   for (const item of loginInfo) {
-    if (item.port) {
-      const port = parseInt(item.port)
-      const pid = item.pid ? parseInt(item.pid) : null
-      let isAlive = false
-      
-      // 检查端口是否在使用
-      if (window.electronAPI) {
-        try {
-          const portCheck = await window.electronAPI.isPortInUse(port)
-          if (portCheck.inUse) {
-            // 检查PID是否匹配（如果有PID）
-            if (pid) {
-              const currentPid = await getPidByPort(port)
-              isAlive = (currentPid === pid)
-            } else {
-              // 没有PID时，只要端口在使用就认为存活
-              isAlive = true
-            }
-          }
-        } catch (error) {
-          console.error('检查端口状态失败:', error)
-        }
-      } else {
-        // 如果API不可用，直接添加（开发环境）
-        isAlive = true
+    if (!item.port) continue
+
+    const tableItem = {
+      nick_name: item.nick_name || '-',
+      user_id: item.user_id || '-',
+      port: String(item.port || '-'),
+      pid: String(item.pid || '-'),
+      expire: item.expire || '未授权', // 过期状态后续会在刷新授权时更新
+      label: item.label || ''
+    }
+    tableData.value.push(tableItem)
+  }
+}
+
+// 启动时检查登录状态：如果未登录，则杀死对应进程并从配置中移除
+const cleanupUnloggedOnMount = async () => {
+  if (!window.electronAPI) return
+
+  const loginInfoList = configStore.getLoginInfo()
+  if (!Array.isArray(loginInfoList) || loginInfoList.length === 0) return
+
+  const remainList = []
+
+  for (const item of loginInfoList) {
+    if (!item.port) {
+      // 没有端口信息的直接保留（兼容旧数据）
+      remainList.push(item)
+      continue
+    }
+
+    const port = parseInt(item.port)
+    if (!port || Number.isNaN(port)) continue
+
+    let needKill = false
+
+    try {
+      const result = await VWorkApi.getLoginStatus(port)
+      const status = result && result.data ? result.data.status : undefined
+      // status === 1 为已登录，其他都视为未登录/无效
+      if (status !== 1) {
+        needKill = true
       }
-      
-      // 无论是否存活，都添加到表格显示
-      const tableItem = {
-        nick_name: item.nick_name || '-',
-        user_id: item.user_id || '-',
-        port: String(item.port || '-'),
-        pid: String(item.pid || '-'),
-        expire: item.expire || '未授权',
-        label: item.label || ''
+    } catch (error) {
+      // 接口异常（端口无响应等）也视为未登录，进行清理
+      console.warn(`端口 ${port} 获取登录状态失败，将尝试杀死进程`, error)
+      needKill = true
+    }
+
+    if (needKill) {
+      try {
+        await window.electronAPI.killProcessByPort(port)
+      } catch (e) {
+        console.error(`杀死端口 ${port} 对应进程失败:`, e)
       }
-      tableData.value.push(tableItem)
-      
-      // 只有存活的才保留在配置中
-      if (isAlive) {
-        aliveWechat.push(item)
-      }
+    } else {
+      // 仍然处于已登录状态的账号保留在配置中
+      remainList.push(item)
     }
   }
-  
-  // 更新配置，只保留存活的企微（如果数据有变化才保存）
-  // 注意：这里会过滤掉已关闭的进程，避免配置中保存无效数据
-  // 线上环境需要过滤掉已关闭的进程，避免配置中保存无效数据
-  
-  if (aliveWechat.length !== loginInfo.length) {
+
+  // 如果有变动，更新配置
+  if (remainList.length !== loginInfoList.length) {
     try {
-      console.log('过滤已关闭的进程，保留存活的企微')
-      await configStore.updateLoginInfo(aliveWechat)
-    } catch (error) {
-      console.error('更新配置失败（不影响显示）:', error)
-      // 保存失败不影响表格显示
+      await configStore.updateLoginInfo(remainList)
+    } catch (e) {
+      console.error('更新配置以移除未登录进程失败:', e)
     }
   }
 }
@@ -429,7 +437,7 @@ const checkLoginStatus = async (port, rowIndex) => {
       const portCheck = await window.electronAPI.isPortInUse(port)
       if (!portCheck.inUse) {
         clearInterval(checkInterval)
-        ElMessage.warning('进程已被关闭')
+        ElMessage.warning(`进程${port}已被关闭`)
         deleteTableItem(rowIndex)
         return
       }
@@ -475,12 +483,12 @@ const checkLoginStatus = async (port, rowIndex) => {
       }
     } catch (error) {
       console.error('检查登录状态失败:', error)
-      if (attempts >= maxAttempts) {
-        clearInterval(checkInterval)
-        deleteTableItem(rowIndex)
-        if (window.electronAPI) {
-          await window.electronAPI.killProcessByPort(port)
-        }
+      // 检查登录状态失败时，立即关闭定时器，避免继续轮询
+      clearInterval(checkInterval)
+      deleteTableItem(rowIndex)
+      if (window.electronAPI) {
+        await window.electronAPI.killProcessByPort(port)
+        ElMessage.warning(`进程${port}登录失败，已关闭`)
       }
     }
   }, 2000)
@@ -520,6 +528,8 @@ const refreshAuthForRow = async (rowIndex, userId, loginInfo) => {
     }
 
     const result = await window.electronAPI.getAuthInfo(userId)
+    console.log("获取的授权信息", result);
+    
     let expire = '未授权'
     
     if (result.success && result.data) {
@@ -629,6 +639,8 @@ onMounted(async () => {
   // 强制等待配置加载完成（无论配置是否已存在，都重新加载确保最新）
   if (window.electronAPI) {
     await configStore.loadConfig()
+    // 启动时先检查并清理所有“未登录”的企业微信进程
+    await cleanupUnloggedOnMount()
   }
   
   await loadLoginInfo()
