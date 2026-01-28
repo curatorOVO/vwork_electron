@@ -3,10 +3,16 @@
  * 保留原项目的接口定义，为后续修改做预留
  */
 
+import { ensureAuthorizedByPort } from './authGuard'
+
 /**
  * 基础URL生成
  */
 export const baseUrl = (port) => `http://127.0.0.1:${port}/api`
+
+// 登录/退出登录相关的 type 列表，这些接口允许在未授权时调用
+// 按需求：getPersonalInfo(1002) 和 inputLoginCaptcha(1005) 也需要校验授权，因此不再豁免
+const LOGIN_RELATED_TYPES = new Set([1000, 1003])
 
 /**
  * 调用API
@@ -16,7 +22,14 @@ export const callAPI = async (port, jsonData) => {
   if (!window.electronAPI) {
     throw new Error('Electron API不可用')
   }
-  
+
+  const type = jsonData && jsonData.type
+
+  // 除登录/退出登录等接口外，其它所有接口调用前先检查授权
+  if (!LOGIN_RELATED_TYPES.has(type)) {
+    ensureAuthorizedByPort(port)
+  }
+
   // 直接调用企微的HTTP端口
   const url = baseUrl(port)
   const result = await window.electronAPI.callAPI({
@@ -24,11 +37,11 @@ export const callAPI = async (port, jsonData) => {
     method: 'POST',
     data: jsonData
   })
-  
+
   if (!result.success) {
     throw new Error(result.msg || 'API调用失败')
   }
-  
+
   return result.data
 }
 
