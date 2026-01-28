@@ -3,6 +3,7 @@
  * 保留原项目的接口定义，为后续修改做预留
  */
 
+import { ElMessage } from 'element-plus'
 import { ensureAuthorizedByPort } from './authGuard'
 
 /**
@@ -12,37 +13,45 @@ export const baseUrl = (port) => `http://127.0.0.1:${port}/api`
 
 // 登录/退出登录相关的 type 列表，这些接口允许在未授权时调用
 // 按需求：getPersonalInfo(1002) 和 inputLoginCaptcha(1005) 也需要校验授权，因此不再豁免
-const LOGIN_RELATED_TYPES = new Set([1000, 1003])
+const LOGIN_RELATED_TYPES = new Set([1000, 1001, 1002, 1003, 1005])
 
 /**
  * 调用API
  * port: 企微的HTTP端口（不是FastAPI服务器端口）
  */
 export const callAPI = async (port, jsonData) => {
-  if (!window.electronAPI) {
-    throw new Error('Electron API不可用')
+  try {
+    if (!window.electronAPI) {
+      throw new Error('Electron API不可用')
+    }
+
+    const type = jsonData && jsonData.type
+
+    // 除登录/退出登录等接口外，其它所有接口调用前先检查授权
+    if (!LOGIN_RELATED_TYPES.has(type)) {
+      ensureAuthorizedByPort(port)
+    }
+
+    // 直接调用企微的HTTP端口
+    const url = baseUrl(port)
+    const result = await window.electronAPI.callAPI({
+      url,
+      method: 'POST',
+      data: jsonData
+    })
+
+    if (!result.success) {
+      throw new Error(result.msg || 'API调用失败')
+    }
+
+    return result.data
+  } catch (error) {
+    // 授权失败统一提示
+    if (error && error.code === 'NO_AUTH') {
+      ElMessage.error(error.message || '当前账号未授权或授权已到期，请重新购买授权')
+    }
+    throw error
   }
-
-  const type = jsonData && jsonData.type
-
-  // 除登录/退出登录等接口外，其它所有接口调用前先检查授权
-  if (!LOGIN_RELATED_TYPES.has(type)) {
-    ensureAuthorizedByPort(port)
-  }
-
-  // 直接调用企微的HTTP端口
-  const url = baseUrl(port)
-  const result = await window.electronAPI.callAPI({
-    url,
-    method: 'POST',
-    data: jsonData
-  })
-
-  if (!result.success) {
-    throw new Error(result.msg || 'API调用失败')
-  }
-
-  return result.data
 }
 
 /**

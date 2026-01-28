@@ -445,7 +445,6 @@ const checkLoginStatus = async (port, rowIndex) => {
     
     try {
       const result = await VWorkApi.getLoginStatus(port)
-      console.log("获取的登录状态", result);
       if (result && result.data) {
         const status = result.data.status
         if (status === 1) {
@@ -528,7 +527,6 @@ const refreshAuthForRow = async (rowIndex, userId, loginInfo) => {
     }
 
     const result = await window.electronAPI.getAuthInfo(userId)
-    console.log("获取的授权信息", result);
     
     let expire = '未授权'
     
