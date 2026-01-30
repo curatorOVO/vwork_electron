@@ -1,6 +1,7 @@
 /**
  * 数据模型定义
  */
+const { DEFAULT_SERVER_PORT_STRING } = require('../configs/defaults')
 
 class LoginInfo {
   constructor(data = {}) {
@@ -52,7 +53,7 @@ class LoginInfo {
 
 class ReadConfig {
   constructor(data = {}) {
-    this.server_port = data.server_port || '8888'
+    this.server_port = data.server_port || DEFAULT_SERVER_PORT_STRING
     this.callback = data.callback || ''
     this.open_log = data.open_log !== undefined ? data.open_log : true
     this.save_log = data.save_log !== undefined ? data.save_log : true

@@ -10,6 +10,7 @@ const { ReadConfig, LoginInfo } = require('../utils/schemas')
 const { exec } = require('child_process')
 const { promisify } = require('util')
 const execAsync = promisify(exec)
+const { DEFAULT_SERVER_PORT_STRING } = require('../configs/defaults')
 
 /**
  * 获取配置文件路径
@@ -343,7 +344,7 @@ function readIni(configPath = null) {
     const content = fs.readFileSync(configPath, 'utf-8')
     const conf = ini.parse(content)
 
-    let server_port = '8888'
+    let server_port = DEFAULT_SERVER_PORT_STRING
     let callback = ''
     let open_log = true
     let save_log = true
@@ -380,7 +381,7 @@ function readIni(configPath = null) {
   } catch (error) {
     console.error(`读取配置失败: ${error.message}`)
     return new ReadConfig({
-      server_port: '8888',
+      server_port: DEFAULT_SERVER_PORT_STRING,
       callback: '',
       open_log: true,
       save_log: true,

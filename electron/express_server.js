@@ -7,6 +7,10 @@ const express = require('express')
 const cors = require('cors')
 const axios = require('axios')
 const { readIni, sendCallback, validAuthDatetime, killProcessByPort, saveLogToFile } = require('./commons/common')
+const { DEFAULT_SERVER_PORT } = require('./configs/defaults')
+
+// 导入路由
+const apiRoutes = require('./routes/index')
 
 const app = express()
 
@@ -22,7 +26,7 @@ app.use(cors({
 app.use(express.json())
 
 // 消息推送地址（由环境变量设置）
-const MESSAGE_SERVER_URL = process.env.MESSAGE_SERVER_URL || 'http://127.0.0.1:9999/message'
+const MESSAGE_SERVER_URL = process.env.MESSAGE_SERVER_URL
 
 /**
  * 接收企微消息推送
@@ -128,8 +132,26 @@ app.post('/msg', async (req, res) => {
  * 根路径
  */
 app.get('/', (req, res) => {
-  res.json({ message: 'Express Server Running' })
+  res.json({ 
+    message: 'Express Server Running',
+    endpoints: {
+      message: 'POST /msg - 接收企微消息推送',
+      // API路由
+      login: '/api/login/* - 登录相关接口',
+      user: '/api/user/* - 用户相关接口',
+      group: '/api/group/* - 群组相关接口',
+      message: '/api/message/* - 消息发送接口',
+      cdn: '/api/cdn/* - CDN下载接口',
+      // 通用接口
+      apiCall: 'POST /api/call - 通用企微API调用接口',
+      // 兼容接口
+      groupMembersLegacy: 'POST /api/group-members - 获取群成员列表（兼容接口）'
+    }
+  })
 })
+
+// 注册API路由
+app.use('/api', apiRoutes)
 
 /**
  * 运行Express服务器
@@ -159,7 +181,7 @@ async function runServer(port) {
 
 // 如果直接运行此文件
 if (require.main === module) {
-  const port = parseInt(process.argv[2]) || 8888
+  const port = parseInt(process.argv[2]) || DEFAULT_SERVER_PORT
   runServer(port)
 }
 

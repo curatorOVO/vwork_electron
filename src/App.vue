@@ -9,7 +9,7 @@
           <RunLogsPage />
         </el-tab-pane>
         <el-tab-pane label="企微管理" name="manager">
-          <VWorkManagerPage />
+          <VWorkManagerPage ref="vworkManagerRef" />
         </el-tab-pane>
         <el-tab-pane label="设置" name="settings">
           <SettingsPage />
@@ -20,7 +20,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import IndexPage from './pages/IndexPage.vue'
 import RunLogsPage from './pages/RunLogsPage.vue'
 import VWorkManagerPage from './pages/VWorkManagerPage.vue'
@@ -28,11 +29,59 @@ import SettingsPage from './pages/SettingsPage.vue'
 import { useConfigStore } from './stores/config'
 
 const activeTab = ref('index')
-const version = '1.1'
+const vworkManagerRef = ref(null)
 
 // 初始化配置
 const configStore = useConfigStore()
 configStore.loadConfig()
+
+// 处理退出登录消息通知
+const handleLogoutMessage = async (data) => {
+  // 检查是否为退出登录消息
+  const isLogout = data.type === 900 || 
+    (data.msg && ['退出登录', 'logout', '已退出'].some(k => data.msg.includes(k)))
+  
+  if (!isLogout) return
+
+  const userInfo = data.user_id || data.self_user_id || '未知用户'
+  const port = data.port || data.server_port
+  const portNum = port ? parseInt(port) : NaN
+  
+  try {
+    // 杀死进程
+    if (!Number.isNaN(portNum) && window.electronAPI?.killProcessByPort) {
+      await window.electronAPI.killProcessByPort(portNum)
+    }
+    
+    // 从配置中移除登录信息
+    const loginInfoList = configStore.getLoginInfo()
+    const filtered = loginInfoList.filter(item => {
+      if (userInfo !== '未知用户' && item.user_id === userInfo) return false
+      if (!Number.isNaN(portNum) && parseInt(item.port) === portNum) return false
+      return true
+    })
+    
+    if (filtered.length !== loginInfoList.length) {
+      await configStore.updateLoginInfo(filtered)
+      // 刷新列表
+      vworkManagerRef.value?.refreshList?.()
+    }
+    
+    // 显示通知
+    const message = !Number.isNaN(portNum) 
+      ? `用户 ${userInfo} 已退出登录，端口 ${port} 的进程已关闭`
+      : `用户 ${userInfo} 已退出登录`
+    ElMessage.warning({ message, duration: 3000, showClose: true })
+  } catch (error) {
+    console.error('处理退出登录消息时出错:', error)
+    ElMessage.error(`处理退出登录失败: ${error.message}`)
+  }
+}
+
+// 监听消息推送
+onMounted(() => {
+  window.electronAPI?.onFastAPIMessage?.(handleLogoutMessage)
+})
 </script>
 
 <style>

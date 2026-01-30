@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { DEFAULT_SERVER_PORT_STRING } from '../utils/constants'
 
 export const useConfigStore = defineStore('config', () => {
   const config = ref({
     sys: {
-      server_port: '8888',
+      server_port: DEFAULT_SERVER_PORT_STRING,
       callback: '',
       open_log: 'true',
       save_log: 'true'

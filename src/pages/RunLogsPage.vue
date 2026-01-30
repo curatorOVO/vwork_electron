@@ -54,6 +54,7 @@ const formatTime = (timestamp) => {
 // 获取消息类型文本
 const getMessageType = (data) => {
   if (data.sys) return '系统提示'
+  if (data.type === 'api_call') return 'API调用'
   if (data.is_self_msg === 1) return '发出消息'
   if (data.msg_id) return '收到消息'
   return '系统提示'

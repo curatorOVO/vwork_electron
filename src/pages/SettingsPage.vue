@@ -201,12 +201,13 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import { useConfigStore } from '../stores/config'
+import { DEFAULT_SERVER_PORT_STRING } from '../utils/constants'
 
 const configStore = useConfigStore()
 const saving = ref(false)
 
 const formData = reactive({
-  server_port: '8888',
+  server_port: DEFAULT_SERVER_PORT_STRING,
   callback: '',
   open_log: true,
   save_log: true,
@@ -233,7 +234,7 @@ const isUpdateInProgress = computed(() => {
 // 加载配置
 const loadConfig = () => {
   const config = configStore.config
-  formData.server_port = config.sys?.server_port || '8888'
+  formData.server_port = config.sys?.server_port || DEFAULT_SERVER_PORT_STRING
   formData.callback = config.sys?.callback || ''
   formData.open_log = config.sys?.open_log === 'true' || config.sys?.open_log === true
   formData.save_log = config.sys?.save_log === 'true' || config.sys?.save_log === true

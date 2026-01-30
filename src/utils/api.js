@@ -78,6 +78,11 @@ export class VWorkApi {
     return await callAPI(port, { type })
   }
 
+  // 1004: 退出登录通知
+  static async logoutMessage(port, type = 1004) {
+    return await callAPI(port, { type })
+  }
+
   // 1005: 输入登录验证码
   static async inputLoginCaptcha(port, robotId, captcha, type = 1005) {
     return await callAPI(port, { type, code: captcha })

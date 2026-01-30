@@ -118,10 +118,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, defineExpose } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useConfigStore } from '../stores/config'
 import { VWorkApi } from '../utils/api'
+import { DEFAULT_SERVER_PORT_STRING } from '../utils/constants'
 
 const configStore = useConfigStore()
 const tableData = ref([])
@@ -135,7 +136,7 @@ const contextMenuVisible = ref(false)
 const contextMenuPosition = ref({ x: 0, y: 0 })
 const showSubMenu = ref(false)
 
-const serverPort = computed(() => configStore.config.sys?.server_port || '8888')
+const serverPort = computed(() => configStore.config.sys?.server_port || DEFAULT_SERVER_PORT_STRING)
 const injectKey = 'FUAyVli9Ee15q1wdbzpRsSjbyrVo2cDuhgNdLK3CWCW3Y95YepvLarcVszNGmETk'
 
 // 启动时加载登录信息，只负责把配置中的账号展示到表格
@@ -655,6 +656,15 @@ onUnmounted(() => {
   // 移除监听
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('contextmenu', handleClickOutside)
+})
+
+// 暴露刷新列表方法，供父组件调用
+const refreshList = async () => {
+  await loadLoginInfo()
+}
+
+defineExpose({
+  refreshList
 })
 </script>
 

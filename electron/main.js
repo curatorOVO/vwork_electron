@@ -55,7 +55,8 @@ try {
   }
 }
 const axios = require('axios')
-const { saveLogToFile, getConfigPath } = require('./commons/common')
+const { saveLogToFile, getConfigPath, readIni, sendCallback, validAuthDatetime } = require('./commons/common')
+const { DEFAULT_SERVER_PORT, DEFAULT_SERVER_PORT_STRING } = require('./configs/defaults')
 
 let mainWindow
 let messageServer = null // 消息接收服务器
@@ -332,7 +333,7 @@ const readConfig = () => {
     console.error('读取配置失败:', error)
     return {
       sys: {
-        server_port: '8888',
+        server_port: DEFAULT_SERVER_PORT_STRING,
         callback: '',
         open_log: 'true',
         save_log: 'true'
@@ -555,7 +556,7 @@ app.whenReady().then(() => {
   
   // 启动Express服务器（Node.js版本）
   const config = readConfig()
-  startExpressServer(parseInt(config.sys?.server_port || 8888))
+  startExpressServer(parseInt(config.sys?.server_port || DEFAULT_SERVER_PORT))
 
   // 如果是生产环境且开启了自动更新，则启动时检查更新
   if (app.isPackaged) {
@@ -601,6 +602,171 @@ ipcMain.handle('call-api', async (event, { url, method = 'POST', data }) => {
       data,
       timeout: 10000
     })
+    
+    // 提取端口号（URL格式：http://127.0.0.1:${port}/api）
+    const portMatch = url.match(/http:\/\/127\.0\.0\.1:(\d+)\/api/)
+    const port = portMatch ? parseInt(portMatch[1]) : null
+    
+    // 如果成功获取响应，记录日志并发送回调
+    if (port && response.data) {
+      try {
+        // 读取配置
+        const ini_config = readIni()
+        
+        // 根据端口查找对应的登录信息
+        let target_item = null
+        let user_id = ''
+        for (const item of ini_config.login_info) {
+          if (String(item.port) === String(port)) {
+            target_item = item
+            user_id = item.user_id || ''
+            break
+          }
+        }
+        
+        // 构建API调用日志数据
+        const apiType = data && data.type ? data.type : 'unknown'
+        const apiTypeNames = {
+          1000: '获取登录状态',
+          1001: '刷新并获取登录二维码',
+          1002: '获取个人信息',
+          1003: '退出登录',
+          1004: '退出登录通知',
+          1005: '输入登录验证码',
+          2003: '获取群成员列表',
+          3000: '发送文本消息',
+          3001: '发送图片消息',
+          3006: '发送小程序',
+          3009: '发送群@消息',
+          5008: '获取群信息',
+          9001: 'CDN下载企微图片',
+          9004: 'CDN下载个微图片/视频/文件'
+        }
+        const apiName = apiTypeNames[apiType] || `API调用(type:${apiType})`
+        
+        // 检查授权是否有效
+        const expire = target_item ? target_item.expire : ''
+        const valid_auth = validAuthDatetime(expire)
+        
+        // 登录相关的API类型（这些API在登录过程中会被调用，即使还没有授权信息也应该记录日志）
+        const LOGIN_RELATED_API_TYPES = new Set([1000, 1002]) // 1000: 获取登录状态, 1002: 获取个人信息
+        
+        // 判断是否应该记录日志：
+        // 1. 登录相关的API（即使没有授权信息也记录）
+        // 2. 或者授权有效
+        const shouldLog = ini_config.open_log && (
+          LOGIN_RELATED_API_TYPES.has(apiType) || valid_auth
+        )
+        
+        // 判断API调用是否成功
+        // 企微API通常返回 { code: 0, data: {...} } 格式，code为0表示成功
+        const responseData = response.data
+        const isSuccess = responseData && (
+          responseData.code === 0 || 
+          responseData.code === undefined || 
+          (responseData.status !== undefined && responseData.status === 1) ||
+          (!responseData.msg && !responseData.error && !responseData.message)
+        )
+        
+        // 构建日志内容：成功时只显示成功信息，失败时显示失败原因
+        let logContent = ''
+        if (isSuccess) {
+          logContent = '调用成功'
+        } else {
+          // 提取失败原因
+          const errorMsg = responseData.msg || responseData.error || responseData.message || responseData.err_msg || '未知错误'
+          logContent = `调用失败: ${errorMsg}`
+        }
+        
+        // 构建用于前端显示的日志数据
+        const displayLogData = {
+          type: 'api_call',
+          api_type: apiType,
+          api_name: apiName,
+          port: port,
+          user_id: user_id,
+          self_user_id: apiName, // 用于在运行日志页面显示为"发言者"
+          content: logContent,
+          time_stamp: Math.floor(Date.now() / 1000),
+          sys: false
+        }
+        
+        // 构建用于回调的完整数据（包含详细请求和响应）
+        const callbackLogData = {
+          type: 'api_call',
+          api_type: apiType,
+          api_name: apiName,
+          port: port,
+          user_id: user_id,
+          request_data: data,
+          response_data: response.data,
+          time_stamp: displayLogData.time_stamp
+        }
+        
+        // 如果应该记录日志，推送消息到Electron主进程
+        if (shouldLog) {
+          try {
+            const MESSAGE_SERVER_URL = process.env.MESSAGE_SERVER_URL || 'http://127.0.0.1:9999/message'
+            await axios.post(MESSAGE_SERVER_URL, displayLogData, {
+              timeout: 1000
+            })
+          } catch (error) {
+            console.error(`推送API调用日志到Electron失败: ${error.message}`)
+          }
+          
+          // 如果开启了保存日志功能，保存日志到文件
+          if (ini_config.save_log) {
+            // 格式化日志内容用于文件保存（与显示日志使用相同的内容）
+            const fileLogData = {
+              content: `[${apiName}] ${logContent}`,
+              sys: false,
+              time_stamp: displayLogData.time_stamp,
+              user_id: user_id,
+              nick_name: target_item ? target_item.nick_name : ''
+            }
+            saveLogToFile(fileLogData).catch(err => {
+              console.error(`保存API调用日志到文件失败: ${err.message}`)
+            })
+          }
+        }
+        
+        // 如果授权有效，发送回调
+        if (valid_auth) {
+          if (ini_config.callback && ini_config.callback.includes('http') && ini_config.callback.includes('://')) {
+            const callbackResult = await sendCallback(ini_config.callback, callbackLogData)
+            
+            // 如果开启了日志且回调失败，将回调失败信息推送到前端
+            if (ini_config.open_log && !callbackResult.success) {
+              const callbackErrorLogData = {
+                content: callbackResult.message,
+                sys: true,
+                time_stamp: Math.floor(Date.now() / 1000)
+              }
+              
+              try {
+                const MESSAGE_SERVER_URL = process.env.MESSAGE_SERVER_URL || 'http://127.0.0.1:9999/message'
+                await axios.post(MESSAGE_SERVER_URL, callbackErrorLogData, {
+                  timeout: 1000
+                })
+              } catch (error) {
+                console.error(`推送回调日志到Electron失败: ${error.message}`)
+              }
+              
+              // 如果开启了保存日志功能，保存回调日志到文件
+              if (ini_config.save_log) {
+                saveLogToFile(callbackErrorLogData).catch(err => {
+                  console.error(`保存回调日志到文件失败: ${err.message}`)
+                })
+              }
+            }
+          }
+        }
+      } catch (logError) {
+        // 日志记录失败不影响API调用结果
+        console.error(`记录API调用日志失败: ${logError.message}`)
+      }
+    }
+    
     return { success: true, data: response.data }
   } catch (error) {
     return { success: false, msg: error.message, data: null }
