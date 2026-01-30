@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron')
 const path = require('path')
 const { spawn } = require('child_process')
 const fs = require('fs')
 const net = require('net')
+const { autoUpdater } = require('electron-updater')
 let ini
 try {
   ini = require('ini')
@@ -58,6 +59,82 @@ const { saveLogToFile, getConfigPath } = require('./commons/common')
 
 let mainWindow
 let messageServer = null // 消息接收服务器
+
+// 更新配置
+// 注意：更新服务器配置在 package.json 的 build.publish 中设置
+// 1. 使用 GitHub Releases: 配置 provider 为 "github"，并设置 owner 和 repo
+// 2. 使用自定义服务器: 配置 provider 为 "generic"，并设置 url
+// 3. 使用 update.electronjs.org: 需要配置 repository 字段，并确保应用发布到 GitHub Releases
+autoUpdater.autoDownload = false // 默认不自动下载，需要用户确认
+autoUpdater.autoInstallOnAppQuit = true // 应用退出时自动安装更新
+
+// 如果使用自定义更新服务器，可以在这里设置更新服务器地址
+// autoUpdater.setFeedURL({
+//   provider: 'generic',
+//   url: 'https://your-update-server.com/updates/'
+// })
+
+// 更新事件处理
+autoUpdater.on('checking-for-update', () => {
+  console.log('正在检查更新...')
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', { status: 'checking', message: '正在检查更新...' })
+  }
+})
+
+autoUpdater.on('update-available', (info) => {
+  console.log('发现新版本:', info.version)
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', {
+      status: 'available',
+      message: `发现新版本: ${info.version}`,
+      version: info.version,
+      releaseNotes: info.releaseNotes || '暂无更新说明'
+    })
+  }
+})
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('当前已是最新版本:', info.version)
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', {
+      status: 'not-available',
+      message: '当前已是最新版本',
+      version: info.version
+    })
+  }
+})
+
+autoUpdater.on('error', (err) => {
+  console.error('更新检查失败:', err)
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', {
+      status: 'error',
+      message: `更新检查失败: ${err.message}`
+    })
+  }
+})
+
+autoUpdater.on('download-progress', (progressObj) => {
+  if (mainWindow) {
+    mainWindow.webContents.send('update-progress', {
+      percent: Math.round(progressObj.percent),
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    })
+  }
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('更新下载完成:', info.version)
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', {
+      status: 'downloaded',
+      message: '更新下载完成，将在应用重启后安装',
+      version: info.version
+    })
+  }
+})
 
 // 获取应用资源路径（处理打包后的路径）
 const getAppPath = () => {
@@ -480,6 +557,20 @@ app.whenReady().then(() => {
   const config = readConfig()
   startExpressServer(parseInt(config.sys?.server_port || 8888))
 
+  // 如果是生产环境且开启了自动更新，则启动时检查更新
+  if (app.isPackaged) {
+    const updateConfig = readConfig()
+    const autoCheckUpdate = updateConfig.sys?.auto_check_update === 'true' || updateConfig.sys?.auto_check_update === true
+    if (autoCheckUpdate) {
+      // 延迟3秒后检查更新，避免影响应用启动速度
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch(err => {
+          console.error('自动检查更新失败:', err)
+        })
+      }, 3000)
+    }
+  }
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
@@ -712,5 +803,43 @@ ipcMain.on('send-message-to-renderer', (event, data) => {
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('fastapi-message', data)
   }
+})
+
+// 更新相关 IPC 处理
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    if (!app.isPackaged) {
+      return { success: false, message: '开发环境下无法检查更新' }
+    }
+    await autoUpdater.checkForUpdates()
+    return { success: true, message: '正在检查更新...' }
+  } catch (error) {
+    return { success: false, message: error.message }
+  }
+})
+
+ipcMain.handle('download-update', async () => {
+  try {
+    if (!app.isPackaged) {
+      return { success: false, message: '开发环境下无法下载更新' }
+    }
+    await autoUpdater.downloadUpdate()
+    return { success: true, message: '开始下载更新...' }
+  } catch (error) {
+    return { success: false, message: error.message }
+  }
+})
+
+ipcMain.handle('quit-and-install', async () => {
+  try {
+    autoUpdater.quitAndInstall(false, true)
+    return { success: true }
+  } catch (error) {
+    return { success: false, message: error.message }
+  }
+})
+
+ipcMain.handle('get-app-version', () => {
+  return app.getVersion()
 })
 

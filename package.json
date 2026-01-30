@@ -20,10 +20,15 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-username/your-repo.git"
+  },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "axios": "^1.6.5",
     "cors": "^2.8.5",
+    "electron-updater": "^6.7.3",
     "element-plus": "^2.5.6",
     "express": "^4.22.1",
     "pinia": "^2.1.7",
@@ -86,6 +91,13 @@
       "signAndEditExecutable": true,
       "sign": null,
       "signingHashAlgorithms": []
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "your-username",
+        "repo": "your-repo"
+      }
+    ]
   }
 }

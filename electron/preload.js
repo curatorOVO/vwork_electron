@@ -37,6 +37,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 移除消息监听
   removeFastAPIMessageListener: () => {
     ipcRenderer.removeAllListeners('fastapi-message')
+  },
+  
+  // 更新相关
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  
+  // 更新状态监听
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on('update-status', (event, data) => callback(data))
+  },
+  onUpdateProgress: (callback) => {
+    ipcRenderer.on('update-progress', (event, data) => callback(data))
+  },
+  
+  // 移除更新监听
+  removeUpdateListeners: () => {
+    ipcRenderer.removeAllListeners('update-status')
+    ipcRenderer.removeAllListeners('update-progress')
   }
 })
 

@@ -409,11 +409,11 @@ const handleAddWechat = async () => {
 
 // 检查登录状态
 const checkLoginStatus = async (port, rowIndex) => {
-  const maxAttempts = 120 // 最多检查120次（4分钟，每2秒一次）
+  const maxAttempts = 90 // 最多检查90次（3分钟，每2秒一次）
   let attempts = 0
   let loginCacheKey = `login_${port}`
-  let loginCacheExpire = Date.now() + 120000 // 2分钟缓存
-  const startupGracePeriod = 9 // 启动宽限期：前9次检查（18秒内）不检查端口，给进程启动时间
+  let loginCacheExpire = Date.now() + 180000 // 3分钟缓存
+  const startupGracePeriod = 90 // 启动宽限期：前90次检查（180秒内）不检查端口，给进程启动时间
 
   const checkInterval = setInterval(async () => {
     attempts++
