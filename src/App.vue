@@ -48,7 +48,7 @@ const handleLogoutMessage = async (data) => {
   const portNum = port ? parseInt(port) : NaN
   
   try {
-    // 杀死进程
+    // 杀死进程（即使进程已经退出，这里也会尝试）
     if (!Number.isNaN(portNum) && window.electronAPI?.killProcessByPort) {
       await window.electronAPI.killProcessByPort(portNum)
     }
@@ -63,8 +63,17 @@ const handleLogoutMessage = async (data) => {
     
     if (filtered.length !== loginInfoList.length) {
       await configStore.updateLoginInfo(filtered)
-      // 刷新列表
-      vworkManagerRef.value?.refreshList?.()
+      // 刷新列表 - 确保组件已初始化后再调用
+      if (vworkManagerRef.value) {
+        await vworkManagerRef.value.refreshList?.()
+      } else {
+        // 如果组件还没初始化，延迟调用
+        setTimeout(async () => {
+          if (vworkManagerRef.value) {
+            await vworkManagerRef.value.refreshList?.()
+          }
+        }, 100)
+      }
     }
     
     // 显示通知

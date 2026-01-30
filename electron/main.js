@@ -681,7 +681,6 @@ ipcMain.handle('call-api', async (event, { url, method = 'POST', data }) => {
         // 构建用于前端显示的日志数据
         const displayLogData = {
           type: 'api_call',
-          api_type: apiType,
           api_name: apiName,
           port: port,
           user_id: user_id,
@@ -694,11 +693,9 @@ ipcMain.handle('call-api', async (event, { url, method = 'POST', data }) => {
         // 构建用于回调的完整数据（包含详细请求和响应）
         const callbackLogData = {
           type: 'api_call',
-          api_type: apiType,
           api_name: apiName,
           port: port,
           user_id: user_id,
-          request_data: data,
           response_data: response.data,
           time_stamp: displayLogData.time_stamp
         }
@@ -730,8 +727,12 @@ ipcMain.handle('call-api', async (event, { url, method = 'POST', data }) => {
           }
         }
         
-        // 如果授权有效，发送回调
-        if (valid_auth) {
+        // 判断是否应该发送回调：
+        // 1. 登录相关的API（1000, 1002）无论授权状态如何都发送回调
+        // 2. 其他API需要授权有效才发送回调
+        const shouldSendCallback = LOGIN_RELATED_API_TYPES.has(apiType) || valid_auth
+        
+        if (shouldSendCallback) {
           if (ini_config.callback && ini_config.callback.includes('http') && ini_config.callback.includes('://')) {
             const callbackResult = await sendCallback(ini_config.callback, callbackLogData)
             
@@ -1007,5 +1008,27 @@ ipcMain.handle('quit-and-install', async () => {
 
 ipcMain.handle('get-app-version', () => {
   return app.getVersion()
+})
+
+// 保存日志到文件
+ipcMain.handle('save-log-to-file', async (event, data) => {
+  try {
+    const result = await saveLogToFile(data)
+    return { success: result }
+  } catch (error) {
+    console.error('保存日志失败:', error)
+    return { success: false, message: error.message }
+  }
+})
+
+// 发送回调
+ipcMain.handle('send-callback', async (event, { url, data }) => {
+  try {
+    const result = await sendCallback(url, data)
+    return result
+  } catch (error) {
+    console.error('发送回调失败:', error)
+    return { success: false, message: error.message }
+  }
 })
 

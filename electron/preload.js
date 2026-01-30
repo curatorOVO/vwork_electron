@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   removeUpdateListeners: () => {
     ipcRenderer.removeAllListeners('update-status')
     ipcRenderer.removeAllListeners('update-progress')
-  }
+  },
+  
+  // 日志和回调相关
+  saveLogToFile: (data) => ipcRenderer.invoke('save-log-to-file', data),
+  sendCallback: (url, data) => ipcRenderer.invoke('send-callback', { url, data })
 })
 

@@ -519,6 +519,20 @@ const handleRefreshAuth = async () => {
   await refreshAuthForRow(selectedRowIndex.value, row.user_id, row)
 }
 
+// 判断授权是否有效
+const validAuthDatetime = (dateStr) => {
+  try {
+    if (!dateStr || dateStr === '未授权') {
+      return false
+    }
+    const dt = new Date(dateStr.replace(/-/g, '/'))
+    const now = new Date()
+    return now <= dt
+  } catch (error) {
+    return false
+  }
+}
+
 // 刷新授权（内部方法）
 const refreshAuthForRow = async (rowIndex, userId, loginInfo) => {
   try {
@@ -556,6 +570,68 @@ const refreshAuthForRow = async (rowIndex, userId, loginInfo) => {
     }
     
     await configStore.updateLoginInfo(loginInfoList)
+
+    // 构建授权刷新日志数据
+    const row = tableData.value[rowIndex]
+    const nickName = row?.nick_name || loginInfo?.nick_name || '-'
+    const port = row?.port || loginInfo?.port || '-'
+    const logData = {
+      content: `刷新授权: ${nickName}(${userId}) - 授权到期时间: ${expire}`,
+      sys: true,
+      time_stamp: Math.floor(Date.now() / 1000)
+    }
+
+    // 读取配置以获取日志和回调设置
+    const config = configStore.config
+    const openLog = config.sys?.open_log === 'true' || config.sys?.open_log === true
+    const saveLog = config.sys?.save_log === 'true' || config.sys?.save_log === true
+    const callback = config.sys?.callback || ''
+    const validAuth = validAuthDatetime(expire)
+
+    // 如果开启了日志，保存日志到文件
+    if (openLog && saveLog) {
+      try {
+        await window.electronAPI.saveLogToFile(logData)
+      } catch (error) {
+        console.error('保存授权刷新日志失败:', error)
+      }
+    }
+
+    // 如果授权有效且配置了回调地址，发送回调
+    if (validAuth && callback && callback.includes('http') && callback.includes('://')) {
+      try {
+        // 构建回调数据（包含授权信息）
+        const callbackData = {
+          type: 'auth_refresh',
+          user_id: userId,
+          nick_name: nickName,
+          port: port,
+          expire: expire,
+          time_stamp: Math.floor(Date.now() / 1000)
+        }
+        
+        const callbackResult = await window.electronAPI.sendCallback(callback, callbackData)
+        
+        // 如果开启了日志且回调失败，记录回调失败日志
+        if (openLog && !callbackResult.success) {
+          const callbackLogData = {
+            content: `回调发送失败: ${callbackResult.message}`,
+            sys: true,
+            time_stamp: Math.floor(Date.now() / 1000)
+          }
+          
+          if (saveLog) {
+            try {
+              await window.electronAPI.saveLogToFile(callbackLogData)
+            } catch (error) {
+              console.error('保存回调失败日志失败:', error)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('发送授权刷新回调失败:', error)
+      }
+    }
   } catch (error) {
     ElMessage.error('获取授权信息失败: ' + error.message)
     updateTableItem(rowIndex, { expire: '未授权' })
@@ -660,7 +736,82 @@ onUnmounted(() => {
 
 // 暴露刷新列表方法，供父组件调用
 const refreshList = async () => {
+  // 重新加载配置
+  await configStore.loadConfig()
+  // 从配置中加载登录信息
   await loadLoginInfo()
+  
+  // 验证表格中的进程是否还在运行，移除已退出的进程
+  if (window.electronAPI) {
+    const validRows = []
+    for (let i = 0; i < tableData.value.length; i++) {
+      const row = tableData.value[i]
+      const port = parseInt(row.port)
+      
+      if (!isNaN(port) && port > 0) {
+        try {
+          // 检查端口是否还在使用
+          const portCheck = await window.electronAPI.isPortInUse(port)
+          if (portCheck && portCheck.inUse) {
+            // 检查登录状态
+            try {
+              const result = await VWorkApi.getLoginStatus(port)
+              const status = result && result.data ? result.data.status : undefined
+              // status === 1 为已登录，其他都视为未登录/无效
+              if (status === 1) {
+                validRows.push(row)
+              } else {
+                // 未登录，尝试杀死进程
+                try {
+                  await window.electronAPI.killProcessByPort(port)
+                } catch (e) {
+                  console.error(`杀死端口 ${port} 对应进程失败:`, e)
+                }
+              }
+            } catch (error) {
+              // 接口异常（端口无响应等）也视为未登录，尝试杀死进程
+              try {
+                await window.electronAPI.killProcessByPort(port)
+              } catch (e) {
+                console.error(`杀死端口 ${port} 对应进程失败:`, e)
+              }
+            }
+          } else {
+            // 端口不在使用，说明进程已退出
+            console.log(`端口 ${port} 已不再使用，从表格中移除`)
+          }
+        } catch (error) {
+          console.error(`检查端口 ${port} 状态失败:`, error)
+          // 检查失败时，保留该行（可能是临时网络问题）
+          validRows.push(row)
+        }
+      } else {
+        // 没有有效端口，保留该行
+        validRows.push(row)
+      }
+    }
+    
+    // 更新表格数据
+    if (validRows.length !== tableData.value.length) {
+      tableData.value = validRows
+      
+      // 更新配置，移除已退出的进程
+      const loginInfoList = configStore.getLoginInfo()
+      const validPorts = new Set(validRows.map(row => parseInt(row.port)).filter(p => !isNaN(p) && p > 0))
+      const filtered = loginInfoList.filter(item => {
+        if (!item.port) return true // 保留没有端口信息的（兼容旧数据）
+        const port = parseInt(item.port)
+        return isNaN(port) || validPorts.has(port)
+      })
+      
+      if (filtered.length !== loginInfoList.length) {
+        await configStore.updateLoginInfo(filtered)
+      }
+    }
+  } else {
+    // 如果没有 electronAPI，只从配置加载
+    await loadLoginInfo()
+  }
 }
 
 defineExpose({

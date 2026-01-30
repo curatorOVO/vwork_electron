@@ -50,7 +50,9 @@ app.post('/msg', async (req, res) => {
     }
 
     const expire = target_item ? target_item.expire : ''
-    const valid_auth = validAuthDatetime(expire)
+    const user_id = data && data.user_id ? data.user_id : 'unknown'
+    
+    const valid_auth = user_id === 'unknown' ? true : validAuthDatetime(expire)
 
     // 如果开启日志且授权有效，推送消息到Electron主进程
     if (ini_config.open_log && valid_auth) {
